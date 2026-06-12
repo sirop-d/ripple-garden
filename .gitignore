@@ -1,7 +1,13 @@
-# Vault運用ファイル（リポジトリには正本コードと仕様書のみ置く）
+# Vault運用ファイル（公開リポジトリには index.html / README / LICENSE / assets のみ置く）
 .DS_Store
 *bak/
 *ログ/
 *作業ログ/
 *作業temp/
 .claude/
+📐仕様書*
+📐仕様書*
+*プロンプト*
+*プロンプト*
+*_sirop_*
+ripple-garden_v[0-9]*.html

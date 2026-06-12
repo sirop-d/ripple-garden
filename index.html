@@ -3,24 +3,29 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v004
+  @version v005
   担当AI名: Claude / クー
 
   更新履歴:
+  - v005_20260612_175140: 公開準備。OGPメタタグ（og:image=assets/ogp.jpg）追加 /
+    GitHub Public化・GitHub Pages公開に伴うREADME・LICENSE整備（リポジトリ側）
   - v004_20260612_172935: ハーモニーをジャンル名から情景名へ刷新（書斎/夜光/残光/深海/
     驟雨/街道/微睡/鼓動/凪/霞） / コード進行を全面再設計 / 反射音のコード吸着 /
-    グルーヴを裏拍・バックビート・先取り中心へ / 勉強・リラックス・睡魔の状態系情景 /
-    違和感の匙加減（friction: 旋律の滑り・刻みの人間的なよれ・スパイス和音）
+    グルーヴを裏拍・バックビート・先取り中心へ / 違和感の匙加減（friction）
   - v003_20260612_145857: プロジェクト名を ripple-garden へ統一 / 自動クルーズモード /
     クリアと終了の光・音フェード / 3言語 / テーマ / journal・ripple-gardenタブ
-  - v002_20260612_142950: BOWLモード（ブラウンノイズ×高Q共鳴） / 10ジャンルのコード進行
-    ハーモニー / スペースキー奏法＋弓奏ストローク / 心地良さアシストON/OFF
 -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="description" content="ripple-garden — 触れた水面が音と模様を生む生成楽器。a generative water instrument.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ripple-garden — 波紋の庭">
+<meta property="og:description" content="触れた水面が音と模様を生む生成楽器。波動方程式の水面、イベント駆動の音、WAV書き出し。A generative water instrument.">
+<meta property="og:url" content="https://sirop-d.github.io/ripple-garden/">
+<meta property="og:image" content="https://sirop-d.github.io/ripple-garden/assets/ogp.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <title>ripple-garden — 波紋の庭</title>
 <style>
   /* ---------- 基調（ダーク既定 / html[data-theme=light] で上書き） ---------- */
@@ -381,7 +386,7 @@
 
 <button id="brand" aria-label="home">
   <h1>ripple-garden</h1>
-  <span class="sub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V004</span>
+  <span class="sub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V005</span>
 </button>
 
 <nav id="tabs">
@@ -487,7 +492,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v004";
+const VERSION = "v005";
 const VERSION_DATE = "2026.06.12";
 
 /* ---------- 1. モード定義 ---------- */
@@ -654,9 +659,9 @@ const I18N = {
     close: "閉じる",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v005", "一般公開。OGPサムネイル、README、GitHub Pages。"],
       ["v004", "ハーモニーを情景名へ刷新（書斎・夜光・凪・霞…）、進行とグルーヴを裏拍文化へ再設計、反射音のコード吸着、違和感の匙加減。"],
       ["v003", "自動クルーズ（5〜120分・∞・シャッフル）、フェード、3言語、テーマ、journal / ripple-garden タブ。"],
-      ["v002", "BOWLモード、コード進行ハーモニー、スペース奏法と弓奏ストローク、心地良さアシスト。"],
     ],
     journal: `
 <h2>journal — 水音と環境音の小さな研究</h2>
@@ -700,9 +705,9 @@ const I18N = {
     close: "close",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v005", "Public release. OGP thumbnail, README, GitHub Pages."],
       ["v004", "Scene-named harmony (library, neon, lull, haze…), progressions & grooves rebuilt around off-beats, chord-snapped reflections, a pinch of friction."],
       ["v003", "Auto-cruise (5–120 min, ∞, shuffle), fades, three languages, themes, journal & ripple-garden tabs."],
-      ["v002", "BOWL mode, chord-progression harmony, spacebar play & bow strokes, comfort assist."],
     ],
     journal: `
 <h2>journal — small notes on water & ambient sound</h2>
@@ -746,9 +751,9 @@ const I18N = {
     close: "fermer",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v005", "Sortie publique. Vignette OGP, README, GitHub Pages."],
       ["v004", "Harmonies renommées en scènes (library, neon, lull, haze…), progressions et grooves à contretemps, réflexions accordées, un soupçon de friction."],
       ["v003", "Croisière automatique (5–120 min, ∞, aléatoire), fondus, trois langues, thèmes, onglets journal & ripple-garden."],
-      ["v002", "Mode BOWL, harmonies par progressions d'accords, jeu à la barre d'espace et coups d'archet, assistance de confort."],
     ],
     journal: `
 <h2>journal — petites notes sur l'eau et le son ambiant</h2>
