@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<!--
+  Ripple Garden — 波紋の庭
+  触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
+
+  @version v002
+  担当AI名: Claude / クー
+
+  更新履歴:
+  - v002_20260612_142950: BOWLモード（ブラウンノイズ×高Q共鳴のグラスボウル）追加 /
+    ジャンル別コード進行ハーモニー（横軸=コード・縦軸=構成音、10ジャンル） /
+    スペースキー奏法＋押し込みストロークの分散和音ギミック / 心地良さアシストON/OFF /
+    コードネーム表示 / ヒント文が消えないCSSバグ修正
+  - v001_20260612_100226: 初版。波動方程式による水面シミュレーション / 5モード /
+    Web Audio生成音（発生・反射・干渉） / ScriptProcessor録音→WAV書き出し / 半透明ミニマルUI
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Ripple Garden — 波紋の庭</title>
+<style>
+  /* ---------- 基調 ---------- */
+  :root{
+    --ink: rgba(196, 214, 230, .78);
+    --ink-dim: rgba(168, 190, 212, .42);
+    --ink-faint: rgba(160, 185, 210, .22);
+    --hairline: rgba(170, 200, 230, .14);
+    --panel-bg: rgba(7, 11, 17, .58);
+    --accent: rgba(165, 210, 250, .9);
+    --rec: rgba(235, 130, 110, .9);
+    --serif: "Didot", "Bodoni 72", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+    --sans: "Avenir Next", "Helvetica Neue", "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{
+    width:100%; height:100%; overflow:hidden;
+    background:#04070c;
+    font-family:var(--sans);
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #view{
+    position:fixed; inset:0; width:100%; height:100%;
+    display:block; cursor:crosshair; touch-action:none;
+  }
+  /* 周辺減光 — 水面に奥行きを与える */
+  #vignette{
+    position:fixed; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(2,4,8,.55) 100%);
+  }
+
+  /* ---------- 銘 ---------- */
+  #brand{
+    position:fixed; top:26px; left:30px; pointer-events:none; line-height:1;
+  }
+  #brand h1{
+    font-family:var(--serif); font-weight:400; font-size:17px;
+    letter-spacing:.42em; color:var(--ink);
+  }
+  #brand .sub{
+    display:block; margin-top:9px;
+    font-size:8.5px; letter-spacing:.34em; color:var(--ink-dim);
+  }
+
+  /* ---------- パネル開閉ボタン ---------- */
+  #panelToggle{
+    position:fixed; top:22px; right:22px; z-index:30;
+    width:34px; height:34px;
+    background:var(--panel-bg); border:1px solid var(--hairline);
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:border-color .3s;
+  }
+  #panelToggle:hover{ border-color:rgba(170,200,230,.3); }
+  #panelToggle i{
+    position:relative; width:12px; height:1px; background:var(--ink-dim);
+    transition:transform .35s, background .3s;
+  }
+  #panelToggle i::before{
+    content:""; position:absolute; left:0; top:-4px; width:12px; height:1px;
+    background:inherit; transition:transform .35s, top .35s;
+  }
+  #panelToggle i::after{
+    content:""; position:absolute; left:0; top:4px; width:12px; height:1px;
+    background:inherit; transition:transform .35s, top .35s;
+  }
+  body.panel-open #panelToggle i{ background:var(--ink); transform:rotate(45deg); }
+  body.panel-open #panelToggle i::before{ top:0; transform:rotate(-90deg); }
+  body.panel-open #panelToggle i::after{ top:0; opacity:0; }
+
+  /* ---------- コントロールパネル ---------- */
+  #panel{
+    position:fixed; top:70px; right:22px; z-index:25;
+    width:212px; padding:20px 18px 16px;
+    background:var(--panel-bg); border:1px solid var(--hairline);
+    -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+    color:var(--ink);
+    opacity:0; transform:translateX(12px); pointer-events:none;
+    transition:opacity .35s, transform .35s;
+    max-height:calc(100vh - 92px); overflow-y:auto;
+  }
+  body.panel-open #panel{ opacity:1; transform:translateX(0); pointer-events:auto; }
+
+  .sec-label{
+    font-size:8px; letter-spacing:.3em; color:var(--ink-faint);
+    margin-bottom:10px;
+  }
+  .sec + .sec{ margin-top:18px; padding-top:16px; border-top:1px solid var(--hairline); }
+
+  /* モード選択 — ボタンではなく目次のように */
+  .mode-row{
+    display:flex; align-items:baseline; gap:10px;
+    padding:5px 0 5px 10px; cursor:pointer;
+    border-left:1px solid transparent;
+    color:var(--ink-dim); transition:color .25s, border-color .25s;
+  }
+  .mode-row:hover{ color:var(--ink); }
+  .mode-row.active{ color:var(--ink); border-left-color:var(--accent); }
+  .mode-row .no{ font-size:8px; letter-spacing:.12em; color:var(--ink-faint); width:14px; }
+  .mode-row .nm{ font-size:10px; letter-spacing:.26em; flex:1; }
+  .mode-row .jp{ font-size:9px; color:var(--ink-faint); letter-spacing:.1em; }
+  .mode-row.active .jp{ color:var(--ink-dim); }
+
+  /* ハーモニー（ジャンル）セレクト */
+  .sel-wrap{ position:relative; }
+  .sel-wrap::after{
+    content:""; position:absolute; right:11px; top:50%;
+    width:5px; height:5px; pointer-events:none;
+    border-right:1px solid var(--ink-dim); border-bottom:1px solid var(--ink-dim);
+    transform:translateY(-70%) rotate(45deg);
+  }
+  #selGenre{
+    -webkit-appearance:none; appearance:none; width:100%;
+    background:transparent; border:1px solid var(--hairline);
+    color:var(--ink); font-family:var(--sans);
+    font-size:9px; letter-spacing:.18em;
+    padding:8px 26px 8px 10px; cursor:pointer;
+  }
+  #selGenre:focus{ outline:none; border-color:rgba(170,200,230,.3); }
+  #selGenre option{ background:#0a0f16; color:#c4d6e6; letter-spacing:normal; }
+
+  /* アシスト切替 */
+  .assist{
+    display:flex; align-items:center; gap:10px;
+    margin-top:12px; padding:2px 0; cursor:pointer;
+  }
+  .assist .a-lbl{ font-size:8px; letter-spacing:.24em; color:var(--ink-dim); }
+  .assist .a-line{ flex:1; height:1px; background:var(--hairline); }
+  .assist .a-state{ font-size:8px; letter-spacing:.2em; color:var(--accent); }
+  .assist.off .a-state{ color:var(--ink-faint); }
+
+  /* スライダー */
+  .ctl{ display:flex; align-items:center; gap:12px; padding:6px 0; }
+  .ctl label{
+    font-size:8px; letter-spacing:.24em; color:var(--ink-dim); width:58px; flex:none;
+  }
+  .ctl input[type=range]{
+    -webkit-appearance:none; appearance:none; flex:1; min-width:0; height:18px;
+    background:transparent; cursor:pointer;
+  }
+  .ctl input[type=range]::-webkit-slider-runnable-track{
+    height:1px; background:rgba(170,200,230,.25);
+  }
+  .ctl input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:9px; height:9px; margin-top:-4px;
+    border-radius:50%; background:#04070c; border:1px solid var(--accent);
+  }
+  .ctl input[type=range]::-moz-range-track{
+    height:1px; background:rgba(170,200,230,.25);
+  }
+  .ctl input[type=range]::-moz-range-thumb{
+    width:7px; height:7px; border-radius:50%;
+    background:#04070c; border:1px solid var(--accent);
+  }
+
+  /* 録音・操作ボタン */
+  .btn-row{ display:flex; border:1px solid var(--hairline); }
+  .btn-row button{
+    flex:1; padding:9px 0; background:transparent; border:none;
+    border-right:1px solid var(--hairline);
+    font-family:var(--sans); font-size:8.5px; letter-spacing:.22em;
+    color:var(--ink-dim); cursor:pointer;
+    transition:color .25s, background .25s, opacity .25s;
+  }
+  .btn-row button:last-child{ border-right:none; }
+  .btn-row button:hover:not(:disabled){ color:var(--ink); background:rgba(170,200,230,.05); }
+  .btn-row button:disabled{ opacity:.28; cursor:default; }
+  #btnRec.recording{ color:var(--rec); }
+  #btnRec.recording::before{
+    content:"●"; font-size:7px; margin-right:5px;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  .keys{
+    margin-top:14px; font-size:7.5px; letter-spacing:.16em;
+    color:var(--ink-faint); text-align:center;
+  }
+
+  /* ---------- 録音バッジ ---------- */
+  #recBadge{
+    position:fixed; left:30px; bottom:26px; z-index:20;
+    font-size:9px; letter-spacing:.28em; color:var(--rec);
+    font-variant-numeric:tabular-nums;
+    opacity:0; transition:opacity .4s; pointer-events:none;
+  }
+  #recBadge.on{ opacity:1; }
+  #recBadge::before{
+    content:"●"; font-size:7px; margin-right:8px;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+
+  /* ---------- コードネーム表示 ---------- */
+  #chordName{
+    position:fixed; right:30px; bottom:24px; z-index:20;
+    font-family:var(--serif); font-size:14px; font-style:italic;
+    letter-spacing:.22em; color:var(--ink-dim);
+    opacity:0; transition:opacity .9s; pointer-events:none;
+  }
+  #chordName.on{ opacity:.85; transition:opacity .25s; }
+
+  /* ---------- 誘い文 ---------- */
+  #hint{
+    position:fixed; left:50%; bottom:34px; transform:translateX(-50%);
+    font-size:9px; letter-spacing:.42em; color:var(--ink-dim);
+    white-space:nowrap; pointer-events:none;
+    animation:breathe 5s ease-in-out infinite;
+    transition:opacity 1.6s;
+  }
+  #hint.gone{ animation:none; opacity:0; }
+  @keyframes breathe{ 0%,100%{opacity:.55} 50%{opacity:.95} }
+
+  @media (max-width:640px){
+    #brand{ top:20px; left:20px; }
+    #brand h1{ font-size:14px; }
+    #panel{ width:198px; right:16px; top:64px; }
+    #panelToggle{ top:16px; right:16px; }
+    #hint{ bottom:26px; letter-spacing:.3em; }
+    #recBadge{ left:20px; bottom:20px; }
+    #chordName{ right:20px; bottom:18px; font-size:12px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+<div id="vignette"></div>
+
+<header id="brand">
+  <h1>RIPPLE GARDEN</h1>
+  <span class="sub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V002</span>
+</header>
+
+<button id="panelToggle" aria-label="controls"><i></i></button>
+
+<aside id="panel">
+  <div class="sec">
+    <div class="sec-label">MODE</div>
+    <div id="modeList"></div>
+  </div>
+  <div class="sec">
+    <div class="sec-label">HARMONY</div>
+    <div class="sel-wrap"><select id="selGenre" aria-label="genre"></select></div>
+    <div class="assist" id="assistToggle">
+      <span class="a-lbl">ASSIST</span><span class="a-line"></span><span class="a-state" id="assistState">ON</span>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-label">WATER</div>
+    <div class="ctl"><label>LIFE</label><input type="range" id="sLife" min="0.4" max="2.2" step="0.01" value="1"></div>
+    <div class="ctl"><label>SPEED</label><input type="range" id="sSpeed" min="0.5" max="1.5" step="0.01" value="1"></div>
+    <div class="ctl"><label>REFLECT</label><input type="range" id="sReflect" min="0" max="1" step="0.01" value="0.75"></div>
+    <div class="ctl"><label>VOLUME</label><input type="range" id="sVolume" min="0" max="1" step="0.01" value="0.75"></div>
+  </div>
+  <div class="sec">
+    <div class="sec-label">RECORD</div>
+    <div class="btn-row">
+      <button id="btnRec">REC</button>
+      <button id="btnStop" disabled>STOP</button>
+      <button id="btnWav" disabled>WAV</button>
+      <button id="btnClear">CLEAR</button>
+    </div>
+    <div class="keys">1–6 MODE · C CLEAR · SPACE DROP</div>
+  </div>
+</aside>
+
+<div id="recBadge">REC 00:00</div>
+<div id="chordName"></div>
+<div id="hint">TOUCH THE WATER · 水面に触れてください</div>
+
+<script>
+"use strict";
+/* ============================================================
+   Ripple Garden v002
+   構成:
+     1. モード定義（水の物性 × 音色）
+     2. ジャンル定義（コード進行 = 横軸、構成音 = 縦軸）
+     3. ハーモニーとアシスト（音高決定の心臓部）
+     4. 水面シミュレーション（2D波動方程式）
+     5. 描画
+     6. 波紋イベント検出（反射・干渉 → 音のトリガー）
+     7. サウンドエンジン（Web Audio）
+     8. 録音と WAV 書き出し
+     9. UI と入力（クリック / ドラッグ / スペース奏法）
+     10. メインループ
+   ============================================================ */
+
+/* ---------- 1. モード定義 ---------- */
+/* c2: 波の伝播係数(CFL安定条件 < 0.5) / sub: 1フレームのサブステップ数
+   k: 減衰 / amp: 波紋の初期振幅 / root+scale: FREE時の音階 / octShift: 和声時の音域補正
+   voice: "bell"(既定) or "bowl"(ブラウンノイズ共鳴) / partials: 倍音 [倍率, 音量]
+   decay: 余韻秒 / send: リバーブ量 / interGain: 干渉音の強さ / jitter: 揺らぎ(セント)
+   shimmer: 水面の自然な揺らぎ頻度 */
+const MODES = [
+  { id:"calm", name:"CALM", jp:"静",
+    c2:.17, sub:1, k:.0013, amp:1.5, octShift:0, voice:"bell",
+    root:57, scale:[0,3,5,7,10],
+    partials:[[1,1],[2.01,.22]], bellMix:.55, dropMix:.85, splash:.06,
+    decay:2.6, send:.45, interGain:1, jitter:4, shimmer:.012, reflGain:.7,
+    heightGain:110, shadeGain:190,
+    base:[6,10,16], crest:[120,170,205], trough:[18,34,60] },
+
+  { id:"glass", name:"GLASS", jp:"硝子",
+    c2:.30, sub:1, k:.0020, amp:1.25, octShift:12, voice:"bell",
+    root:76, scale:[0,2,4,7,9],
+    partials:[[1,1],[2.756,.32],[5.404,.1]], bellMix:1, dropMix:.2, splash:0,
+    decay:3.4, send:.32, interGain:1.2, jitter:2, shimmer:.008, reflGain:.8,
+    heightGain:130, shadeGain:210,
+    base:[5,9,14], crest:[150,200,228], trough:[14,28,50] },
+
+  { id:"storm", name:"STORM", jp:"嵐",
+    c2:.43, sub:2, k:.0034, amp:2.6, octShift:-12, voice:"bell",
+    root:43, scale:[0,3,5,7,10],
+    partials:[[.5,.5],[1,1],[1.5,.28]], bellMix:.8, dropMix:.5, splash:.3,
+    decay:1.3, send:.22, interGain:1, jitter:18, shimmer:.09, reflGain:1.1,
+    heightGain:100, shadeGain:170,
+    base:[7,10,14], crest:[125,152,178], trough:[20,30,48] },
+
+  { id:"resonance", name:"RESONANCE", jp:"共鳴",
+    c2:.26, sub:1, k:.0010, amp:1.7, octShift:0, voice:"bell",
+    root:62, scale:[0,2,4,7,9],
+    partials:[[1,1],[2,.25],[3,.12]], bellMix:.8, dropMix:.4, splash:.04,
+    decay:3.0, send:.5, interGain:3.2, jitter:0, shimmer:.01, reflGain:.8,
+    heightGain:115, shadeGain:195,
+    base:[7,8,16], crest:[150,170,222], trough:[22,26,58] },
+
+  { id:"zen", name:"ZEN", jp:"禅",
+    c2:.13, sub:1, k:.0008, amp:1.15, octShift:0, voice:"bell",
+    root:50, scale:[0,2,3,7,8],
+    partials:[[1,1],[2.01,.15]], bellMix:.6, dropMix:.6, splash:0,
+    decay:4.5, send:.6, interGain:.7, jitter:3, shimmer:.003, reflGain:.4,
+    heightGain:90, shadeGain:160,
+    base:[4,6,10], crest:[115,140,162], trough:[12,18,30] },
+
+  { id:"bowl", name:"BOWL", jp:"鉢",
+    c2:.15, sub:1, k:.0010, amp:1.4, octShift:0, voice:"bowl",
+    root:55, scale:[0,2,4,7,9],
+    partials:[[1,1],[2.32,.4],[4.25,.14]], // ガラス鉢の非整数倍音
+    bellMix:.9, dropMix:.3, splash:0,
+    decay:5.5, send:.55, interGain:1.4, jitter:0, shimmer:.006, reflGain:.5,
+    heightGain:100, shadeGain:175,
+    base:[5,9,10], crest:[140,185,175], trough:[14,30,34] },
+];
+
+/* ---------- 2. ジャンル定義 ---------- */
+/* prog: コード進行（MIDIノート列）。横軸を4分割し、列ごとにコードが変わる。
+   縦軸はそのコードの構成音（±1オクターブ展開）を上下に並べた梯子になる */
+const GENRES = [
+  { id:"free", label:"FREE — 自由（モード音階）", prog:null, names:null },
+  { id:"citypop", label:"CITY POP — シティポップ",
+    prog:[[53,57,60,64],[52,56,59,62],[57,60,64,67],[55,58,62,65]],
+    names:["FM7","E7","Am7","Gm7"] },
+  { id:"jpop", label:"J-POP — 王道進行",
+    prog:[[53,57,60,64],[55,59,62,65],[52,55,59,62],[57,60,64,67]],
+    names:["FM7","G7","Em7","Am7"] },
+  { id:"deephouse", label:"DEEP HOUSE — ディープハウス",
+    prog:[[57,60,64,67,71],[53,57,60,64,67],[60,64,67,71,74],[52,55,59,62,66]],
+    names:["Am9","Fmaj9","Cmaj9","Em9"] },
+  { id:"dnb", label:"DRUM & BASS — リキッド",
+    prog:[[52,55,59,62,66],[48,52,55,59],[55,59,62,66],[50,54,57,64]],
+    names:["Em9","Cmaj7","G6","Dadd9"] },
+  { id:"ukrock", label:"UK ROCK — ブリットポップ",
+    prog:[[48,52,55,60],[55,59,62,67],[57,60,64,69],[53,57,60,65]],
+    names:["C","G","Am","F"] },
+  { id:"lofi", label:"LO-FI HIP HOP — ローファイ",
+    prog:[[50,53,57,60,64],[55,59,62,65,69],[48,52,55,59,62],[57,60,64,67,71]],
+    names:["Dm9","G13","Cmaj9","Am9"] },
+  { id:"neosoul", label:"NEO SOUL — ネオソウル",
+    prog:[[53,57,60,64,67],[52,55,59,62,66],[50,53,57,60,64],[48,52,55,59,62]],
+    names:["Fmaj9","Em9","Dm9","Cmaj9"] },
+  { id:"afrobeats", label:"AFROBEATS — アフロビーツ",
+    prog:[[57,60,64],[53,57,60,65],[48,52,55,60,64],[55,59,62,67]],
+    names:["Am","F","C","G"] },
+  { id:"ambient", label:"AMBIENT — アンビエント",
+    prog:[[48,50,55,62],[50,52,57,64],[53,55,60,67],[55,60,62,67]],
+    names:["Csus2","Dsus2","Fsus2","Gsus4"] },
+];
+
+/* ---------- 共有状態 ---------- */
+const state = {
+  modeIdx: 0, genreIdx: 0, assist: true,
+  life: 1, speed: 1, reflect: .75, volume: .75,
+  lastTapTime: 0,
+};
+const mode = () => MODES[state.modeIdx];
+const genre = () => GENRES[state.genreIdx];
+
+/* ---------- 3. ハーモニーとアシスト ---------- */
+const midiHz = m => 440 * Math.pow(2, (m - 69) / 12);
+const ladderCache = new Map();
+
+/* FREE時: モード固有のペンタトニック梯子（2オクターブ） */
+function modeLadder(m){
+  const key = "mode:" + m.id;
+  if (ladderCache.has(key)) return ladderCache.get(key);
+  const out = [];
+  for (let oct = 0; oct < 2; oct++)
+    for (const s of m.scale) out.push(midiHz(m.root + s + oct * 12));
+  out.push(midiHz(m.root + 24));
+  ladderCache.set(key, out);
+  return out;
+}
+
+/* 和声時: 画面X位置のコードを ±1オクターブに展開した梯子 */
+function chordLadder(g, col, shift){
+  const key = g.id + ":" + col + ":" + shift;
+  if (ladderCache.has(key)) return ladderCache.get(key);
+  const set = new Set();
+  for (const o of [-12, 0, 12])
+    for (const n of g.prog[col]) set.add(n + o + shift);
+  const out = [...set].sort((a, b) => a - b).map(midiHz);
+  ladderCache.set(key, out);
+  return out;
+}
+
+function columnAt(x01){
+  const g = genre();
+  if (!g.prog) return -1;
+  return Math.max(0, Math.min(g.prog.length - 1, Math.floor(x01 * g.prog.length)));
+}
+
+function currentLadder(x01){
+  const g = genre();
+  if (!g.prog) return modeLadder(mode());
+  return chordLadder(g, columnAt(x01), mode().octShift);
+}
+
+/* 旋律メモリ: アシストONのとき直前の音から大跳躍しないように歩く */
+const melody = { idx: null, t: 0 };
+
+/* 音高決定。arpStep を渡すとストローク用に梯子を1段ずつ歩く（分散和音） */
+function pitchAt(x01, y01, arpStep){
+  const lad = currentLadder(x01);
+  let idx;
+  if (arpStep !== undefined && melody.idx !== null){
+    idx = melody.idx + arpStep;
+    if (idx >= lad.length) idx = lad.length - 2; // 端で折り返す
+    if (idx < 0) idx = 1;
+  } else {
+    idx = Math.round((1 - y01) * (lad.length - 1));
+    // アシスト: 4秒以内の連続入力は跳躍を±4段に抑え、旋律線をなめらかに
+    if (state.assist && melody.idx !== null && performance.now() - melody.t < 4000){
+      const J = 4;
+      idx = Math.max(melody.idx - J, Math.min(melody.idx + J, idx));
+    }
+  }
+  idx = Math.max(0, Math.min(lad.length - 1, idx));
+  melody.idx = idx; melody.t = performance.now();
+  let f = lad[idx];
+  const m = mode();
+  if (!state.assist && m.jitter) f *= Math.pow(2, (Math.random() * 2 - 1) * m.jitter / 1200);
+  return f;
+}
+
+/* 任意周波数を現在の梯子の最寄り音へ吸着（干渉音の濁り防止） */
+function nearestTone(f, lad){
+  let best = lad[0], d = Infinity;
+  for (const t of lad){
+    const dd = Math.abs(Math.log(t / f));
+    if (dd < d){ d = dd; best = t; }
+  }
+  return best;
+}
+
+function resetMelody(){ melody.idx = null; melody.t = 0; }
+
+/* ---------- 4. 水面シミュレーション ---------- */
+/* 2D波動方程式を格子で解く。波の加算（干渉）と端の反射が物理として自然に現れる */
+const sim = { w:0, h:0, cell:4, cur:null, prev:null, canvas:null, ctx:null, img:null };
+const view = document.getElementById("view");
+const vctx = view.getContext("2d");
+let DPR = 1, VW = 0, VH = 0;
+
+function setupSim(){
+  VW = window.innerWidth; VH = window.innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  view.width = Math.round(VW * DPR);
+  view.height = Math.round(VH * DPR);
+
+  // セルサイズ: 端末負荷に合わせて格子数を約16万セル以下に抑える
+  let cell = Math.min(VW, VH) > 760 ? 3 : 4;
+  while ((VW / cell) * (VH / cell) > 160000) cell++;
+  sim.cell = cell;
+  sim.w = Math.max(8, Math.round(VW / cell));
+  sim.h = Math.max(8, Math.round(VH / cell));
+  sim.cur = new Float32Array(sim.w * sim.h);
+  sim.prev = new Float32Array(sim.w * sim.h);
+  sim.canvas = document.createElement("canvas");
+  sim.canvas.width = sim.w; sim.canvas.height = sim.h;
+  sim.ctx = sim.canvas.getContext("2d");
+  sim.img = sim.ctx.createImageData(sim.w, sim.h);
+  // アルファは不透明で固定
+  const d = sim.img.data;
+  for (let i = 3; i < d.length; i += 4) d[i] = 255;
+}
+
+/* ガウス型の盛り上がりを水面に落とす（負方向 = 水を押し下げる） */
+function injectImpulse(cssX, cssY, amp, radiusCells){
+  const cx = cssX / sim.cell, cy = cssY / sim.cell;
+  const r = radiusCells, r2 = r * r;
+  const x0 = Math.max(1, Math.floor(cx - r)), x1 = Math.min(sim.w - 2, Math.ceil(cx + r));
+  const y0 = Math.max(1, Math.floor(cy - r)), y1 = Math.min(sim.h - 2, Math.ceil(cy + r));
+  for (let y = y0; y <= y1; y++){
+    for (let x = x0; x <= x1; x++){
+      const dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+      if (d2 < r2) sim.cur[y * sim.w + x] -= amp * Math.exp(-d2 / (r2 * .35));
+    }
+  }
+}
+
+/* 1ステップ進める。prevに次状態を書き込み、最後にバッファ交換 */
+function stepField(){
+  const W = sim.w, H = sim.h;
+  const m = mode();
+  const c2 = Math.min(.47, m.c2 * state.speed * state.speed);
+  const damp = 1 - (m.k / state.life);
+  const cur = sim.cur, nxt = sim.prev;
+
+  for (let y = 1; y < H - 1; y++){
+    let i = y * W + 1;
+    for (let x = 1; x < W - 1; x++, i++){
+      const lap = cur[i-1] + cur[i+1] + cur[i-W] + cur[i+W] - 4 * cur[i];
+      nxt[i] = (2 * cur[i] - nxt[i] + c2 * lap) * damp;
+    }
+  }
+
+  // 端: ミラー境界（反射）。REFLECT が低いほど吸収帯で波を消す
+  const refl = state.reflect;
+  for (let x = 0; x < W; x++){
+    nxt[x] = nxt[x + W] * refl;
+    nxt[(H-1)*W + x] = nxt[(H-2)*W + x] * refl;
+  }
+  for (let y = 0; y < H; y++){
+    nxt[y*W] = nxt[y*W + 1] * refl;
+    nxt[y*W + W-1] = nxt[y*W + W-2] * refl;
+  }
+  // 吸収帯（スポンジ層）: 反射を弱める設定のとき端の波を減衰
+  const absorb = (1 - refl) * .32;
+  if (absorb > .003){
+    const B = 12;
+    for (let b = 0; b < B; b++){
+      const g = 1 - absorb * Math.pow(1 - b / B, 2);
+      const yT = b * W, yB = (H-1-b) * W;
+      for (let x = 0; x < W; x++){ nxt[yT + x] *= g; nxt[yB + x] *= g; }
+      for (let y = 0; y < H; y++){ nxt[y*W + b] *= g; nxt[y*W + W-1-b] *= g; }
+    }
+  }
+
+  sim.prev = cur; sim.cur = nxt;
+}
+
+/* ---------- 5. 描画 ---------- */
+const glows = []; // {x, y, t0, str, col, life, r} クリック点や干渉点の発光
+
+function renderField(now){
+  const W = sim.w, H = sim.h, cur = sim.cur, d = sim.img.data;
+  const m = mode();
+  // ごく弱い時間揺らぎ — 水面の明度がゆっくり呼吸する
+  const breathe = 1 + .04 * Math.sin(now * .00021);
+  const hg = m.heightGain * breathe, sg = m.shadeGain;
+  const [bR, bG, bB] = m.base, [cR, cG, cB] = m.crest, [tR, tG, tB] = m.trough;
+
+  let i = 0, p = 0;
+  for (let y = 0; y < H; y++){
+    const yu = y > 0 ? -W : 0, yd = y < H - 1 ? W : 0;
+    for (let x = 0; x < W; x++, i++, p += 4){
+      const h = cur[i];
+      // 上方からの光: 高さの勾配でハイライト（水らしい照り）
+      let v = h * hg + (cur[i + yu] - cur[i + yd]) * sg;
+      v = v / (1 + Math.abs(v) * .0055); // ソフトクリップで白飛びを上品に
+      if (v > 0){
+        const a = v * .01;
+        d[p]   = bR + cR * a;
+        d[p+1] = bG + cG * a;
+        d[p+2] = bB + cB * a;
+      } else {
+        const a = v * .009;
+        d[p]   = bR + tR * a;
+        d[p+1] = bG + tG * a;
+        d[p+2] = bB + tB * a;
+      }
+    }
+  }
+  sim.ctx.putImageData(sim.img, 0, 0);
+
+  // 低解像度の場をなめらかに拡大 — ぼかしが水の柔らかさになる
+  vctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  vctx.imageSmoothingEnabled = true;
+  vctx.imageSmoothingQuality = "high";
+  vctx.clearRect(0, 0, VW, VH);
+  vctx.drawImage(sim.canvas, 0, 0, VW, VH);
+
+  // 発光点（タップの雫・干渉の燐光・ストロークの航跡）
+  vctx.globalCompositeOperation = "lighter";
+  for (let g = glows.length - 1; g >= 0; g--){
+    const gl = glows[g];
+    const age = (now - gl.t0) / 1000;
+    if (age > gl.life){ glows.splice(g, 1); continue; }
+    const k = 1 - age / gl.life;
+    const rad = gl.r + (1 - k) * gl.r * 2.2;
+    const grad = vctx.createRadialGradient(gl.x, gl.y, 0, gl.x, gl.y, rad);
+    grad.addColorStop(0, `rgba(${gl.col}, ${(.28 * k * k * gl.str).toFixed(3)})`);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    vctx.fillStyle = grad;
+    vctx.beginPath();
+    vctx.arc(gl.x, gl.y, rad, 0, Math.PI * 2);
+    vctx.fill();
+  }
+  vctx.globalCompositeOperation = "source-over";
+}
+
+function addGlow(x, y, str, col, life, r){
+  glows.push({ x, y, t0: performance.now(), str, col: col || "190,225,255", life: life || .7, r: r || 13 });
+  if (glows.length > 48) glows.shift();
+}
+
+/* ---------- 6. 波紋イベント検出 ---------- */
+/* 視覚は格子シミュに任せ、音のために各波紋の波頭半径を解析的に追跡する。
+   壁到達 → 反射音、波頭同士の交差 → 干渉音 を一度ずつ発火 */
+let rippleSeq = 0;
+const ripples = []; // {id, x, y, born, r, freq, e0, walls:[l,r,t,b], met:Set}
+
+function registerRipple(x, y, freq, e0){
+  ripples.push({ id: rippleSeq++, x, y, born: performance.now(), r: 0,
+                 freq, e0, walls: [false, false, false, false], met: new Set() });
+  if (ripples.length > 24) ripples.shift();
+}
+
+function updateRipples(dtMs, now){
+  const m = mode();
+  const c2 = Math.min(.47, m.c2 * state.speed * state.speed);
+  // 離散波動方程式の伝播速度 ≈ sqrt(c2) セル/ステップ
+  const pxPerMs = Math.sqrt(c2) * m.sub * sim.cell * 60 / 1000;
+  const tau = (m.decay + 1.6) * state.life * 1000;
+
+  for (let i = ripples.length - 1; i >= 0; i--){
+    const rp = ripples[i];
+    rp.r += pxPerMs * dtMs;
+    const age = now - rp.born;
+    const e = rp.e0 * Math.exp(-age / tau);
+    if (age > tau * 2.5 || e < .02){ ripples.splice(i, 1); continue; }
+
+    // 壁への到達 → 反射音（壁ごとに一度だけ）
+    const dists = [rp.x, VW - rp.x, rp.y, VH - rp.y];
+    for (let w = 0; w < 4; w++){
+      if (!rp.walls[w] && rp.r >= dists[w]){
+        rp.walls[w] = true;
+        if (state.reflect > .05) audio.reflect(rp, w, e);
+      }
+    }
+  }
+
+  // 波頭の交差 → 干渉音（ペアごとに一度だけ）
+  for (let i = 0; i < ripples.length; i++){
+    for (let j = i + 1; j < ripples.length; j++){
+      const a = ripples[i], b = ripples[j];
+      if (a.met.has(b.id)) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1 && a.r + b.r >= dist){
+        a.met.add(b.id);
+        const k = a.r / (a.r + b.r); // 交差点 = 中心間を半径比で内分
+        const px = a.x + dx * k, py = a.y + dy * k;
+        const eA = a.e0 * Math.exp(-(now - a.born) / 4000);
+        const eB = b.e0 * Math.exp(-(now - b.born) / 4000);
+        const str = Math.min(1, eA * eB * 2);
+        if (str > .05){
+          audio.interfere(a.freq, b.freq, px / VW, str);
+          addGlow(px, py, str * .8, "205,220,255", 1.1, 17);
+        }
+      }
+    }
+  }
+}
+
+/* ---------- 7. サウンドエンジン ---------- */
+const audio = (() => {
+  let ctx = null, master = null, limiter = null, dry = null, verb = null, wet = null;
+  let recNode = null, noiseBuf = null, brownBuf = null;
+  let voices = 0; const MAXV = 32;
+  let lastInter = 0;
+
+  /* 初回ジェスチャで初期化（モバイルのオーディオ解禁を兼ねる） */
+  function ensure(){
+    if (ctx) { if (ctx.state === "suspended") ctx.resume(); return true; }
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+
+      master = ctx.createGain();
+      master.gain.value = Math.pow(state.volume, 1.5);
+      limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -14; limiter.knee.value = 18;
+      limiter.ratio.value = 7; limiter.attack.value = .004; limiter.release.value = .24;
+
+      dry = ctx.createGain(); dry.gain.value = 1;
+      verb = ctx.createConvolver(); verb.buffer = makeIR(3.6, 2.4);
+      wet = ctx.createGain(); wet.gain.value = .9;
+
+      dry.connect(master);
+      verb.connect(wet); wet.connect(master);
+      master.connect(limiter); limiter.connect(ctx.destination);
+
+      // ホワイトノイズ（飛沫・反射）とブラウンノイズ（グラスボウル）の素材
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const nd = noiseBuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+      brownBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const bd = brownBuf.getChannelData(0);
+      let bv = 0;
+      for (let i = 0; i < bd.length; i++){
+        bv = (bv + .02 * (Math.random() * 2 - 1)) / 1.02;
+        bd[i] = bv * 3.5;
+      }
+
+      setupRecorderTap();
+      return true;
+    } catch(e){ console.warn("audio init failed:", e); return false; }
+  }
+
+  /* 指数減衰ノイズで残響インパルス応答を生成 */
+  function makeIR(seconds, decayPow){
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++){
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++){
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decayPow);
+      }
+    }
+    return buf;
+  }
+
+  /* 声部の出口を作る: パン → dry / リバーブセンド */
+  function voiceOut(pan, send){
+    const g = ctx.createGain();
+    let tail = g;
+    if (ctx.createStereoPanner){
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      g.connect(p); tail = p;
+    }
+    tail.connect(dry);
+    if (send > 0){
+      const s = ctx.createGain(); s.gain.value = send;
+      tail.connect(s); s.connect(verb);
+    }
+    return g;
+  }
+
+  function envGain(out, peak, attack, decay, t){
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.linearRampToValueAtTime(Math.max(.0001, peak), t + attack);
+    g.gain.exponentialRampToValueAtTime(.0001, t + attack + decay);
+    g.connect(out);
+    return g;
+  }
+
+  function countVoice(node){
+    voices++;
+    node.onended = () => { voices = Math.max(0, voices - 1); };
+  }
+
+  function osc(type, freq, t, stopAt){
+    const o = ctx.createOscillator();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    o.start(t); o.stop(stopAt);
+    countVoice(o);
+    return o;
+  }
+
+  /* グラスボウル声部: ブラウンノイズ → 高Q共鳴フィルタ = 擦られたガラスの鉢 */
+  function bowlVoice(out, f, strength, decay, t, m){
+    for (const [ratio, vol] of m.partials){
+      const src = ctx.createBufferSource();
+      src.buffer = brownBuf; src.loop = true;
+      src.playbackRate.value = .96 + Math.random() * .08; // 個体差の揺らぎ
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = Math.min(9000, f * ratio);
+      bp.Q.value = 38;
+      const dur = decay * (1 + ratio * .04);
+      const g = envGain(out, vol * m.bellMix * strength * .6, .28, dur, t); // ゆっくり膨らむ
+      src.connect(bp); bp.connect(g);
+      src.start(t); src.stop(t + dur + .8);
+      countVoice(src);
+    }
+    // 打音の芯: かすかなサイン
+    const g = envGain(out, .05 * strength, .005, .8, t);
+    osc("sine", f, t, t + 1.2).connect(g);
+  }
+
+  /* 波紋の発生音: ベル + 水滴の "plip" + 飛沫（light = ストローク用の軽い声部） */
+  function tap(x01, y01, strength, freq, light){
+    if (!ensure() || voices > MAXV) return;
+    const m = mode();
+    const f = freq || 440;
+    const t = ctx.currentTime + .005;
+    const pan = (x01 * 2 - 1) * .75;
+    const out = voiceOut(pan, m.send * (light ? .7 : 1));
+    let decay = m.decay * (0.75 + Math.random() * .5) * Math.min(state.life, 1.6);
+    if (light) decay *= .45;
+
+    if (m.voice === "bowl" && !light){
+      bowlVoice(out, f, strength, decay, t, m);
+    } else {
+      // ベル成分（部分音ごとに減衰を変える）
+      const parts = light ? m.partials.slice(0, 1) : m.partials;
+      const bellAmp = light ? .07 : .14;
+      for (const [ratio, vol] of parts){
+        const g = envGain(out, vol * m.bellMix * strength * bellAmp, .004,
+                          decay * (1 - .25 * Math.log2(Math.max(1, ratio))), t);
+        osc("sine", f * ratio, t, t + decay + .6).connect(g);
+      }
+    }
+    // 水滴成分: 周波数が短く上がる "plip"
+    if (m.dropMix > 0){
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f * .5, t);
+      o.frequency.exponentialRampToValueAtTime(f * 1.04, t + .06);
+      const g = envGain(out, .13 * m.dropMix * strength * (light ? .7 : 1), .003, .16, t);
+      o.connect(g); o.start(t); o.stop(t + .35);
+      countVoice(o);
+    }
+    // 飛沫: 帯域ノイズの短い吐息
+    if (m.splash > 0 && !light){
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = Math.min(8000, f * 3.5); bp.Q.value = 5;
+      const g = envGain(out, .05 * m.splash * strength, .002, .14, t);
+      src.connect(bp); bp.connect(g);
+      src.start(t); src.stop(t + .25);
+    }
+  }
+
+  /* 反射音: 壁側にパンした微かなチック */
+  function reflect(rp, wall, e){
+    if (!ensure() || voices > MAXV) return;
+    const m = mode();
+    const t = ctx.currentTime + .005;
+    const vol = e * state.reflect * m.reflGain * .07;
+    if (vol < .003) return;
+    const pan = wall === 0 ? -.8 : wall === 1 ? .8 : (rp.x / VW * 2 - 1) * .6;
+    const out = voiceOut(pan, m.send * .7);
+    const g = envGain(out, vol, .003, .5, t);
+    osc("sine", rp.freq * 2.01, t, t + .9).connect(g);
+    // 高域の小さな囁き
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 3000;
+    const g2 = envGain(out, vol * .5, .002, .08, t);
+    src.connect(hp); hp.connect(g2);
+    src.start(t); src.stop(t + .15);
+  }
+
+  /* 干渉音: 二つの波の音をひとつの和音に。アシストON時は梯子へ吸着して濁りを防ぐ */
+  function interfere(f1, f2, x01, strength){
+    if (!ensure() || voices > MAXV - 4) return;
+    const now = performance.now();
+    if (now - lastInter < 130) return;
+    lastInter = now;
+    const m = mode();
+    const t = ctx.currentTime + .005;
+    const pan = (x01 * 2 - 1) * .6;
+    const base = strength * m.interGain;
+
+    if (m.id === "resonance"){
+      // 共鳴モード: 両者の音をゆっくり立ち上がる二重音として歌わせる
+      const out = voiceOut(pan, .65);
+      let third = (f1 + f2) / 2 * 1.5;
+      if (state.assist) third = nearestTone(third, currentLadder(x01));
+      for (const [f, v] of [[f1, .05], [f2, .05], [third, .02]]){
+        const g = envGain(out, v * base, .22, 2.4, t);
+        osc("sine", f * Math.pow(2, (Math.random() * 4 - 2) / 1200), t, t + 3).connect(g);
+      }
+    } else {
+      let fm = (f1 + f2) / 2;
+      if (state.assist) fm = nearestTone(fm, currentLadder(x01));
+      const out = voiceOut(pan, m.send);
+      const g = envGain(out, .035 * base, .12, 1.5, t);
+      osc("sine", fm, t, t + 2).connect(g);
+    }
+  }
+
+  /* 録音タップ: limiter後 = 実際に聴こえる音をそのまま捕まえる */
+  function setupRecorderTap(){
+    try{
+      recNode = ctx.createScriptProcessor(4096, 2, 2);
+      recNode.onaudioprocess = (e) => {
+        if (!rec.active) return;
+        rec.L.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        rec.R.push(new Float32Array(e.inputBuffer.getChannelData(1)));
+        rec.len += e.inputBuffer.length;
+      };
+      limiter.connect(recNode);
+      const sink = ctx.createGain(); sink.gain.value = 0;
+      recNode.connect(sink); sink.connect(ctx.destination);
+    } catch(e){ console.warn("recorder tap failed:", e); }
+  }
+
+  function setVolume(v){ if (master) master.gain.value = Math.pow(v, 1.5); }
+  function sampleRate(){ return ctx ? ctx.sampleRate : 44100; }
+
+  return { ensure, tap, reflect, interfere, setVolume, sampleRate };
+})();
+
+/* ---------- 8. 録音と WAV 書き出し ---------- */
+const rec = { active: false, L: [], R: [], len: 0, startedAt: 0 };
+
+function recStart(){
+  if (!audio.ensure()) return;
+  rec.L = []; rec.R = []; rec.len = 0;
+  rec.active = true; rec.startedAt = performance.now();
+  ui.recState();
+}
+function recStop(){
+  rec.active = false;
+  ui.recState();
+}
+function recSave(){
+  if (rec.active) recStop();
+  if (rec.len === 0) return;
+  const blob = encodeWav(rec.L, rec.R, rec.len, audio.sampleRate());
+  const a = document.createElement("a");
+  const ts = new Date(), p = n => String(n).padStart(2, "0");
+  a.download = `RippleGarden_take_${ts.getFullYear()}${p(ts.getMonth()+1)}${p(ts.getDate())}_${p(ts.getHours())}${p(ts.getMinutes())}${p(ts.getSeconds())}.wav`;
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* Float32のチャンク列を16bitステレオPCMのWAVに変換 */
+function encodeWav(chunksL, chunksR, totalLen, sampleRate){
+  const buf = new ArrayBuffer(44 + totalLen * 4);
+  const dv = new DataView(buf);
+  const wstr = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); dv.setUint32(4, 36 + totalLen * 4, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);            // PCM
+  dv.setUint16(22, 2, true);            // ステレオ
+  dv.setUint32(24, sampleRate, true);
+  dv.setUint32(28, sampleRate * 4, true);
+  dv.setUint16(32, 4, true);
+  dv.setUint16(34, 16, true);           // 16bit
+  wstr(36, "data"); dv.setUint32(40, totalLen * 4, true);
+
+  let off = 44;
+  for (let c = 0; c < chunksL.length; c++){
+    const L = chunksL[c], R = chunksR[c];
+    for (let i = 0; i < L.length; i++){
+      let l = Math.max(-1, Math.min(1, L[i])), r = Math.max(-1, Math.min(1, R[i]));
+      dv.setInt16(off, l < 0 ? l * 0x8000 : l * 0x7FFF, true); off += 2;
+      dv.setInt16(off, r < 0 ? r * 0x8000 : r * 0x7FFF, true); off += 2;
+    }
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+/* ---------- 9. UI と入力 ---------- */
+const ui = (() => {
+  const modeList = document.getElementById("modeList");
+  const badge = document.getElementById("recBadge");
+  const hint = document.getElementById("hint");
+  const chordEl = document.getElementById("chordName");
+  const btnRec = document.getElementById("btnRec");
+  const btnStop = document.getElementById("btnStop");
+  const btnWav = document.getElementById("btnWav");
+  let chordTimer = null;
+
+  // モード一覧を組み立て
+  MODES.forEach((m, i) => {
+    const row = document.createElement("div");
+    row.className = "mode-row" + (i === 0 ? " active" : "");
+    row.innerHTML = `<span class="no">0${i+1}</span><span class="nm">${m.name}</span><span class="jp">${m.jp}</span>`;
+    row.addEventListener("click", () => setMode(i));
+    modeList.appendChild(row);
+  });
+
+  function setMode(i){
+    state.modeIdx = Math.max(0, Math.min(MODES.length - 1, i));
+    [...modeList.children].forEach((el, j) => el.classList.toggle("active", j === state.modeIdx));
+    resetMelody();
+  }
+
+  // ジャンルセレクト
+  const selGenre = document.getElementById("selGenre");
+  GENRES.forEach((g, i) => {
+    const op = document.createElement("option");
+    op.value = i; op.textContent = g.label;
+    selGenre.appendChild(op);
+  });
+  selGenre.addEventListener("change", () => {
+    state.genreIdx = parseInt(selGenre.value, 10) || 0;
+    resetMelody();
+    selGenre.blur(); // スペース奏法がセレクトに食われないように
+  });
+
+  // アシスト切替
+  const assistEl = document.getElementById("assistToggle");
+  const assistState = document.getElementById("assistState");
+  assistEl.addEventListener("click", () => {
+    state.assist = !state.assist;
+    assistEl.classList.toggle("off", !state.assist);
+    assistState.textContent = state.assist ? "ON" : "OFF";
+    resetMelody();
+  });
+
+  // スライダー
+  const bind = (id, key, fn) => {
+    const el = document.getElementById(id);
+    el.addEventListener("input", () => { state[key] = parseFloat(el.value); if (fn) fn(state[key]); });
+  };
+  bind("sLife", "life");
+  bind("sSpeed", "speed");
+  bind("sReflect", "reflect");
+  bind("sVolume", "volume", v => audio.setVolume(v));
+
+  // 録音まわり
+  btnRec.addEventListener("click", recStart);
+  btnStop.addEventListener("click", recStop);
+  btnWav.addEventListener("click", recSave);
+  document.getElementById("btnClear").addEventListener("click", clearWater);
+
+  // ボタンにフォーカスが残るとスペースキーが誤爆するので外す
+  document.getElementById("panel").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (b) b.blur();
+  });
+
+  function recState(){
+    btnRec.classList.toggle("recording", rec.active);
+    btnRec.disabled = rec.active;
+    btnStop.disabled = !rec.active;
+    btnWav.disabled = rec.active || rec.len === 0;
+    badge.classList.toggle("on", rec.active);
+  }
+
+  function recTimer(){
+    if (!rec.active) return;
+    const s = Math.floor((performance.now() - rec.startedAt) / 1000);
+    badge.textContent = `REC ${String(Math.floor(s / 60)).padStart(2,"0")}:${String(s % 60).padStart(2,"0")}`;
+  }
+
+  /* 弾いたコードの名前を右下にそっと出す */
+  function showChord(x01){
+    const g = genre();
+    if (!g.names) return;
+    chordEl.textContent = g.names[columnAt(x01)];
+    chordEl.classList.add("on");
+    clearTimeout(chordTimer);
+    chordTimer = setTimeout(() => chordEl.classList.remove("on"), 1400);
+  }
+
+  // パネル開閉（デスクトップは初期表示、モバイルは閉）
+  const toggle = document.getElementById("panelToggle");
+  toggle.addEventListener("click", () => document.body.classList.toggle("panel-open"));
+  if (window.innerWidth > 700) document.body.classList.add("panel-open");
+
+  // キーボード: 1–6 モード / C クリア（スペースは入力セクションで扱う）
+  window.addEventListener("keydown", (e) => {
+    if (e.key >= "1" && e.key <= String(MODES.length)) setMode(parseInt(e.key, 10) - 1);
+    else if (e.key === "c" || e.key === "C") clearWater();
+  });
+
+  let hintGone = false;
+  function dismissHint(){ if (!hintGone){ hintGone = true; hint.classList.add("gone"); } }
+
+  return { setMode, recState, recTimer, dismissHint, showChord };
+})();
+
+function clearWater(){
+  sim.cur.fill(0); sim.prev.fill(0);
+  ripples.length = 0; glows.length = 0;
+  resetMelody();
+}
+
+/* 入力: クリック / ドラッグ / スペース奏法 */
+(() => {
+  let lastDrag = { x: -999, y: -999, t: 0 };
+  let lastSpawnT = 0;
+  let spaceHeld = false;
+  const pointerPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const stroke = { x: 0, y: 0 };
+
+  /* 共通の一滴。opt.freq 指定でストローク等の音高を上書き、opt.light で軽い声部 */
+  function spawn(x, y, strength, opt = {}){
+    const m = mode();
+    const now = performance.now();
+    // アシスト: 連打時は少しずつ音量を抑え、耳あたりを保つ
+    if (state.assist && !opt.light && now - lastSpawnT < 140) strength *= .85;
+    lastSpawnT = now;
+
+    const f = opt.freq != null ? opt.freq : pitchAt(x / VW, y / VH);
+    injectImpulse(x, y, m.amp * strength * (opt.light ? .45 : 1), 3.6);
+    audio.tap(x / VW, y / VH, strength, f, !!opt.light);
+    registerRipple(x, y, f, strength);
+    addGlow(x, y, strength, "190,225,255", .7, opt.light ? 8 : 13);
+    ui.showChord(x / VW);
+    ui.dismissHint();
+  }
+
+  view.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    audio.ensure();
+    const now = performance.now();
+    let strength = 1;
+    // Zenモード: 連打を静かに受け流す（間が美をつくる）
+    if (mode().id === "zen" && now - state.lastTapTime < 320) strength = .35;
+    state.lastTapTime = now;
+    spawn(e.clientX, e.clientY, strength);
+    lastDrag = { x: e.clientX, y: e.clientY, t: now };
+  });
+
+  view.addEventListener("pointermove", (e) => {
+    if (spaceHeld) return; // スペース奏法中はストローク側に譲る
+    if (e.buttons === 0 || mode().id === "zen") return; // 禅は撫でても応えない
+    const now = performance.now();
+    const d = Math.hypot(e.clientX - lastDrag.x, e.clientY - lastDrag.y);
+    if (d > 30 && now - lastDrag.t > 70){
+      spawn(e.clientX, e.clientY, .45);
+      lastDrag = { x: e.clientX, y: e.clientY, t: now };
+    }
+  });
+
+  /* ポインタ位置の常時追跡（スペース奏法の照準） */
+  window.addEventListener("pointermove", (e) => {
+    pointerPos.x = e.clientX; pointerPos.y = e.clientY;
+    if (!spaceHeld) return;
+
+    // スペース押し込み + 移動 = 弓奏ストローク:
+    // 移動方向で分散和音が上下し、航跡が淡く光る
+    const dx = e.clientX - stroke.x, dy = e.clientY - stroke.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 26) return;
+    stroke.x = e.clientX; stroke.y = e.clientY;
+    const step = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 1 : -1) : (dx > 0 ? 1 : -1);
+    const f = pitchAt(e.clientX / VW, e.clientY / VH, step);
+    spawn(e.clientX, e.clientY, .42, { freq: f, light: true });
+    addGlow(e.clientX, e.clientY, .35, "190,225,255", .5, 7); // 航跡の燐光
+  });
+
+  /* スペースキー = クリック代用。連打でリズムを刻める（OSのキーリピートは無視） */
+  window.addEventListener("keydown", (e) => {
+    if (e.code !== "Space") return;
+    e.preventDefault(); // スクロールとボタン誤爆の防止
+    if (e.repeat) return;
+    audio.ensure();
+    spaceHeld = true;
+    stroke.x = pointerPos.x; stroke.y = pointerPos.y;
+    spawn(pointerPos.x, pointerPos.y, 1);
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.code === "Space"){ e.preventDefault(); spaceHeld = false; }
+  });
+  window.addEventListener("blur", () => { spaceHeld = false; });
+
+  view.addEventListener("contextmenu", e => e.preventDefault());
+})();
+
+/* リサイズ: 少し待ってから水面を張り直す */
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { setupSim(); ripples.length = 0; }, 220);
+});
+
+/* ---------- 10. メインループ ---------- */
+let lastT = performance.now();
+function frame(now){
+  const dt = Math.min(50, now - lastT);
+  lastT = now;
+  const m = mode();
+
+  // 水面の自然な揺らぎ: ごく小さな雫を時折落とす（音は鳴らさない）
+  if (Math.random() < m.shimmer * (dt / 16.7)){
+    injectImpulse(Math.random() * VW, Math.random() * VH, .022 + Math.random() * .025, 3.5);
+  }
+
+  const steps = m.sub * Math.max(1, Math.round(dt / 16.7));
+  for (let s = 0; s < Math.min(steps, 4); s++) stepField();
+
+  updateRipples(dt, now);
+  renderField(now);
+  ui.recTimer();
+  requestAnimationFrame(frame);
+}
+
+setupSim();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
