@@ -3,18 +3,18 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v003
+  @version v004
   担当AI名: Claude / クー
 
   更新履歴:
-  - v003_20260612_145857: プロジェクト名を ripple-garden へ統一 / 自動クルーズモード
-    （5〜120分・∞ループ・シャッフル・ジャンル別リズムパターン） / クリアと終了の
-    光・音フェード / ジャンル別音色メリハリ / 3言語(JPN/ENG/FRA) / ライト・ダーク・
-    システムテーマ / journal・ripple-gardenタブ / フッター版情報ダイアログ
+  - v004_20260612_172935: ハーモニーをジャンル名から情景名へ刷新（書斎/夜光/残光/深海/
+    驟雨/街道/微睡/鼓動/凪/霞） / コード進行を全面再設計 / 反射音のコード吸着 /
+    グルーヴを裏拍・バックビート・先取り中心へ / 勉強・リラックス・睡魔の状態系情景 /
+    違和感の匙加減（friction: 旋律の滑り・刻みの人間的なよれ・スパイス和音）
+  - v003_20260612_145857: プロジェクト名を ripple-garden へ統一 / 自動クルーズモード /
+    クリアと終了の光・音フェード / 3言語 / テーマ / journal・ripple-gardenタブ
   - v002_20260612_142950: BOWLモード（ブラウンノイズ×高Q共鳴） / 10ジャンルのコード進行
     ハーモニー / スペースキー奏法＋弓奏ストローク / 心地良さアシストON/OFF
-  - v001_20260612_100226: 初版。波動方程式の水面 / 5モード / イベント駆動のWeb Audio /
-    ScriptProcessor録音→WAV書き出し
 -->
 <html lang="ja">
 <head>
@@ -381,7 +381,7 @@
 
 <button id="brand" aria-label="home">
   <h1>ripple-garden</h1>
-  <span class="sub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V003</span>
+  <span class="sub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V004</span>
 </button>
 
 <nav id="tabs">
@@ -474,7 +474,7 @@
    ripple-garden v003
    構成:
      1. モード定義（水の物性 × 音色）
-     2. ジャンル定義（コード進行・リズムパターン・音色トゥイーク）
+     2. 情景定義（コード進行・グルーヴ・音色トゥイーク・違和感の匙加減）
      3. 多言語テキスト（ja / en / fr）
      4. ハーモニーとアシスト
      5. 水面シミュレーション（2D波動方程式）+ パレット補間 + フェードクリア
@@ -487,7 +487,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v003";
+const VERSION = "v004";
 const VERSION_DATE = "2026.06.12";
 
 /* ---------- 1. モード定義 ---------- */
@@ -545,87 +545,105 @@ const MODES = [
     base:[5,9,10], crest:[140,185,175], trough:[14,30,34], lbase:[210,224,219] },
 ];
 
-/* ---------- 2. ジャンル定義 ---------- */
-/* prog: コード進行（MIDI） / names: コードネーム / bpm+swing+pattern: クルーズのリズム
-   pattern: 16分×16歩のベロシティ（0=休符）。null はポアソン的ランダム（density=疎密）
-   tweak: 手弾き・自動演奏共通の音色メリハリ
-     decay=余韻倍率 / sub=サブ低音 / lp=ローパスHz / det=デチューン(セント) /
-     atk=アタック秒 / drop=水滴倍率 / send=リバーブ倍率 */
+/* ---------- 2. 情景定義 ---------- */
+/* ジャンル名ではなく「情景」で選ぶ。それぞれが固有のコード進行・グルーヴ・音色・
+   違和感の匙加減を持つ。
+   prog: コード進行（MIDI） / names: コードネーム / bpm+swing+pattern: クルーズのグルーヴ
+   pattern: 16分×16歩のベロシティ（0=休符）。裏拍・バックビート・先取りを骨にする。
+   null はポアソン的ランダム（density=疎密）
+   friction: 違和感の量（0..0.2）。旋律の滑り・刻みの人間的なよれに効く。
+   tweak: 音色メリハリ decay=余韻 / sub=サブ低音 / lp=ローパスHz / det=デチューン(セント) /
+   atk=アタック秒 / drop=水滴倍率 / send=リバーブ倍率 */
 const GENRES = [
   { id:"free", names:null, prog:null,
-    bpm:60, swing:0, pattern:null, density:1, tweak:{},
-    label:{ ja:"FREE — 自由（モード音階）", en:"FREE — mode scale", fr:"FREE — gamme du mode" } },
+    bpm:60, swing:0, pattern:null, density:1, friction:.08, tweak:{},
+    label:{ ja:"FREE — 素のまま（モード音階）", en:"FREE — bare water", fr:"FREE — eau nue" } },
 
-  { id:"citypop",
-    prog:[[53,57,60,64],[52,56,59,62],[57,60,64,67],[55,58,62,65]],
-    names:["FM7","E7","Am7","Gm7"],
-    bpm:96, swing:.12,
-    pattern:[ .9,0,.3,0, .6,0,.45,0, .85,0,.3,.4, .6,0,.5,.25 ],
+  { id:"library", // 書斎: 勉強が捗る、静かな推進力。違和感は最少
+    prog:[[50,53,57,60,64],[53,57,60,64],[48,52,55,59,62],[55,59,62,64]],
+    names:["Dm9","Fmaj7","Cmaj9","G6"],
+    bpm:72, swing:.08,
+    pattern:[ .6,0,.25,0, 0,0,.5,0, .4,0,0,.3, 0,0,.5,0 ], // 裏に寄りかかる小さな振り子
+    friction:.04,
+    tweak:{ decay:.9, lp:2400, atk:.012 },
+    label:{ ja:"LIBRARY — 書斎", en:"LIBRARY — quiet focus", fr:"LIBRARY — étude calme" } },
+
+  { id:"neon", // 夜光: 都会の夜。気怠いシンコペーションと #9 の艶
+    prog:[[53,57,60,64,67],[52,56,59,62,67],[57,60,64,67,71],[48,52,58,62,69]],
+    names:["Fmaj9","E7#9","Am9","C13"],
+    bpm:98, swing:.14,
+    pattern:[ .8,0,0,.5, 0,.3,.7,0, 0,.5,0,0, .7,0,0,.4 ], // 先取りで前へ倒れる
+    friction:.12,
     tweak:{ decay:.95, det:6, send:1.1 },
-    label:{ ja:"CITY POP — シティポップ", en:"CITY POP", fr:"CITY POP" } },
+    label:{ ja:"NEON — 夜光", en:"NEON — night glow", fr:"NÉON — lueur de nuit" } },
 
-  { id:"jpop",
-    prog:[[53,57,60,64],[55,59,62,65],[52,55,59,62],[57,60,64,67]],
-    names:["FM7","G7","Em7","Am7"],
-    bpm:92, swing:.05,
-    pattern:[ .9,0,0,.3, .6,0,.4,0, .85,0,.3,0, .7,0,.45,.3 ],
-    tweak:{ det:4 },
-    label:{ ja:"J-POP — 王道進行", en:"J-POP — royal road", fr:"J-POP — progression reine" } },
-
-  { id:"deephouse",
-    prog:[[57,60,64,67,71],[53,57,60,64,67],[60,64,67,71,74],[52,55,59,62,66]],
-    names:["Am9","Fmaj9","Cmaj9","Em9"],
-    bpm:122, swing:0,
-    pattern:[ 1,0,0,0, .9,0,.4,0, 1,0,0,.3, .9,0,.45,0 ], // 四つ打ちの体
-    tweak:{ decay:.75, sub:.8, lp:2600 },
-    label:{ ja:"DEEP HOUSE — ディープハウス", en:"DEEP HOUSE", fr:"DEEP HOUSE" } },
-
-  { id:"dnb",
-    prog:[[52,55,59,62,66],[48,52,55,59],[55,59,62,66],[50,54,57,64]],
-    names:["Em9","Cmaj7","G6","Dadd9"],
-    bpm:172, swing:0,
-    pattern:[ 1,0,.4,0, 0,0,.85,0, .5,0,0,.6, 0,.4,.7,0 ], // ブレイクビーツの骨
-    tweak:{ decay:.5, sub:1, drop:1.3 },
-    label:{ ja:"DRUM & BASS — リキッド", en:"DRUM & BASS — liquid", fr:"DRUM & BASS — liquide" } },
-
-  { id:"ukrock",
-    prog:[[48,52,55,60],[55,59,62,67],[57,60,64,69],[53,57,60,65]],
-    names:["C","G","Am","F"],
-    bpm:128, swing:0,
-    pattern:[ .9,0,.6,0, .8,0,.6,0, .9,0,.6,0, .8,0,.6,.4 ], // 8分の推進力
-    tweak:{ decay:.7, det:10, drop:1.1 },
-    label:{ ja:"UK ROCK — ブリットポップ", en:"UK ROCK — britpop", fr:"UK ROCK — britpop" } },
-
-  { id:"lofi",
-    prog:[[50,53,57,60,64],[55,59,62,65,69],[48,52,55,59,62],[57,60,64,67,71]],
-    names:["Dm9","G13","Cmaj9","Am9"],
-    bpm:76, swing:.32,
-    pattern:[ .8,0,0,0, .5,0,0,.3, .7,0,0,.4, .5,0,.3,0 ], // 後ろにもたれるスウィング
-    tweak:{ decay:.85, lp:1700, det:5 },
-    label:{ ja:"LO-FI HIP HOP — ローファイ", en:"LO-FI HIP HOP", fr:"LO-FI HIP HOP" } },
-
-  { id:"neosoul",
-    prog:[[53,57,60,64,67],[52,55,59,62,66],[50,53,57,60,64],[48,52,55,59,62]],
-    names:["Fmaj9","Em9","Dm9","Cmaj9"],
-    bpm:84, swing:.24,
-    pattern:[ .8,0,0,.4, 0,.5,0,0, .7,0,.3,0, 0,.5,0,.3 ], // シンコペーション
+  { id:"afterglow", // 残光: 夕暮れの揺れ。頭は空けてバックビートで歌う
+    prog:[[57,60,64,67,71],[55,58,62,65,69],[53,57,60,64,67],[52,56,59,62,66]],
+    names:["Am9","Gm9","Fmaj9","E9"],
+    bpm:86, swing:.28,
+    pattern:[ 0,0,.6,0, .8,0,0,.4, 0,.5,0,0, .8,0,.3,0 ], // 1拍目を置かない勇気
+    friction:.1,
     tweak:{ decay:1.15, atk:.02, lp:3200 },
-    label:{ ja:"NEO SOUL — ネオソウル", en:"NEO SOUL", fr:"NEO SOUL" } },
+    label:{ ja:"AFTERGLOW — 残光", en:"AFTERGLOW — last light", fr:"AFTERGLOW — rougeoiement" } },
 
-  { id:"afrobeats",
-    prog:[[57,60,64],[53,57,60,65],[48,52,55,60,64],[55,59,62,67]],
-    names:["Am","F","C","G"],
-    bpm:104, swing:.08,
-    pattern:[ .9,0,0,.6, 0,0,.8,0, 0,.6,0,0, .8,0,.4,0 ], // トレシージョ 3-3-2
+  { id:"abyss", // 深海: 沈むマイナー9th。集中の周回軌道
+    prog:[[48,51,55,58,62],[53,56,60,63,67],[56,60,63,67],[58,62,65,68,72]],
+    names:["Cm9","Fm9","Abmaj7","Bb9"],
+    bpm:120, swing:0,
+    pattern:[ .9,0,0,0, .35,0,.65,0, 0,0,.9,0, .35,0,.65,.3 ], // 四つの錨と裏の燐光
+    friction:.08,
+    tweak:{ decay:.75, sub:.8, lp:2600 },
+    label:{ ja:"ABYSS — 深海", en:"ABYSS — deep water", fr:"ABYSS — abysses" } },
+
+  { id:"squall", // 驟雨: 170の風。先取りで次の小節へ倒れ込む
+    prog:[[52,55,59,62,66],[48,52,55,59,66],[57,60,64,67,71],[47,51,55,57]],
+    names:["Em9","Cmaj7#11","Am9","B7#5"],
+    bpm:170, swing:0,
+    pattern:[ 1,0,0,.5, 0,0,.85,0, 0,.45,0,0, .8,0,0,.55 ], // ブレイクの骨と前のめり
+    friction:.15,
+    tweak:{ decay:.5, sub:1, drop:1.3 },
+    label:{ ja:"SQUALL — 驟雨", en:"SQUALL — driven rain", fr:"SQUALL — averse" } },
+
+  { id:"avenue", // 街道: 曇り空の推進力。表ではなく裏で押す
+    prog:[[48,52,55,62],[52,55,59,62],[53,57,60,67],[55,59,62,64]],
+    names:["Cadd9","Em7","Fadd9","G6"],
+    bpm:126, swing:0,
+    pattern:[ .85,0,.5,0, 0,0,.85,0, .5,0,0,.45, 0,0,.8,0 ], // 裏打ちの推進
+    friction:.1,
+    tweak:{ decay:.7, det:10, drop:1.1 },
+    label:{ ja:"AVENUE — 街道", en:"AVENUE — grey skies", fr:"AVENUE — ciel gris" } },
+
+  { id:"drowse", // 微睡: 64の振り子。睡魔の入口、遅れて落ちる雫
+    prog:[[53,57,60,64],[52,55,59,62],[50,53,57,60],[48,52,55,59]],
+    names:["Fmaj7","Em7","Dm7","Cmaj7"],
+    bpm:64, swing:.4,
+    pattern:[ .7,0,0,0, 0,0,.45,0, 0,0,.55,0, 0,.35,0,0 ], // 振り子は戻りが遅い
+    friction:.12,
+    tweak:{ decay:1.4, lp:1500, det:4, atk:.03, send:1.2 },
+    label:{ ja:"DROWSE — 微睡", en:"DROWSE — half asleep", fr:"DROWSE — demi-sommeil" } },
+
+  { id:"pulse", // 鼓動: 3-3-2が前へ転がる
+    prog:[[50,53,57,60],[53,57,60,65],[48,52,55,60],[55,59,62,67]],
+    names:["Dm7","F","C","G"],
+    bpm:102, swing:.06,
+    pattern:[ .9,0,0,.7, 0,0,.85,0, 0,.6,0,0, .8,0,.45,0 ], // トレシージョ 3-3-2
+    friction:.1,
     tweak:{ decay:.6, drop:1.4 },
-    label:{ ja:"AFROBEATS — アフロビーツ", en:"AFROBEATS", fr:"AFROBEATS" } },
+    label:{ ja:"PULSE — 鼓動", en:"PULSE — heartbeat", fr:"PULSE — battement" } },
 
-  { id:"ambient",
-    prog:[[48,50,55,62],[50,52,57,64],[53,55,60,67],[55,60,62,67]],
-    names:["Csus2","Dsus2","Fsus2","Gsus4"],
-    bpm:48, swing:0, pattern:null, density:.6, // 拍を持たない
+  { id:"lull", // 凪: 揺れない水平線。深いリラックス、拍を持たない
+    prog:[[48,52,55,59,62],[53,57,60,64,67],[57,60,64,67,71],[55,60,62,67]],
+    names:["Cmaj9","Fmaj9","Am9","Gsus4"],
+    bpm:56, swing:0, pattern:null, density:.8, friction:.05,
+    tweak:{ decay:1.6, send:1.3, atk:.05 },
+    label:{ ja:"LULL — 凪", en:"LULL — still water", fr:"LULL — accalmie" } },
+
+  { id:"haze", // 霞: 4度堆積の浮遊。どこにも帰らない、最も違和感が濃い
+    prog:[[48,53,58,63],[50,55,60,65],[52,57,62,67],[55,60,65,70]],
+    names:["C 4th","D 4th","E 4th","G 4th"],
+    bpm:44, swing:0, pattern:null, density:.5, friction:.18,
     tweak:{ decay:1.7, send:1.35, atk:.05 },
-    label:{ ja:"AMBIENT — アンビエント", en:"AMBIENT", fr:"AMBIENT" } },
+    label:{ ja:"HAZE — 霞", en:"HAZE — drift", fr:"HAZE — brume" } },
 ];
 
 /* ---------- 3. 多言語テキスト ---------- */
@@ -636,9 +654,9 @@ const I18N = {
     close: "閉じる",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
-      ["v003", "自動クルーズ（5〜120分・∞・シャッフル）、ジャンル別リズム、フェード、3言語、テーマ、journal / ripple-garden タブ。"],
-      ["v002", "BOWLモード、10ジャンルのコード進行、スペース奏法と弓奏ストローク、心地良さアシスト。"],
-      ["v001", "波動方程式の水面、5モード、イベント駆動のWeb Audio、WAV録音。"],
+      ["v004", "ハーモニーを情景名へ刷新（書斎・夜光・凪・霞…）、進行とグルーヴを裏拍文化へ再設計、反射音のコード吸着、違和感の匙加減。"],
+      ["v003", "自動クルーズ（5〜120分・∞・シャッフル）、フェード、3言語、テーマ、journal / ripple-garden タブ。"],
+      ["v002", "BOWLモード、コード進行ハーモニー、スペース奏法と弓奏ストローク、心地良さアシスト。"],
     ],
     journal: `
 <h2>journal — 水音と環境音の小さな研究</h2>
@@ -657,7 +675,7 @@ const I18N = {
 <li>2017 — lo-fi hip hop radio。勉強する少女のループとともに、流しっぱなしの音楽が日常になる。</li>
 </ul>
 <h2>長尺という発明</h2>
-<p>環境音の動画は「終わらないこと」に価値がある。5分の美しさより、90分の気配。ripple-garden のクルーズモードはその自家生成版で、5分から120分、あるいは無限に、水面がひとりで演奏を続ける。シャッフルを灯せば、モードとジャンルが頃合いでゆっくり入れ替わる。</p>
+<p>環境音の動画は「終わらないこと」に価値がある。5分の美しさより、90分の気配。ripple-garden のクルーズモードはその自家生成版で、5分から120分、あるいは無限に、水面がひとりで演奏を続ける。シャッフルを灯せば、モードと情景が頃合いでゆっくり入れ替わる。</p>
 <p class="note">※ 音量は控えめに。環境音の効果には個人差があります。これは医学的な助言ではなく、文化の話。</p>`,
     about: `
 <h2>ripple-garden とは</h2>
@@ -668,7 +686,7 @@ const I18N = {
 <li>ドラッグ — 水面を撫でる。スペースキー — ポインタの位置に一滴。連打でリズムが刻める。</li>
 <li>スペースを押し込みながらポインタを動かす — 弓奏。分散和音が移動方向に沿って歩く。</li>
 <li>MODE — 水の性格と音色。CALM / GLASS / STORM / RESONANCE / ZEN / BOWL。</li>
-<li>HARMONY — ジャンルを選ぶと、画面の横軸がコード進行になる。ASSIST は心地良さの補助輪。</li>
+<li>HARMONY — 情景（書斎・夜光・凪…）を選ぶと、画面の横軸がコード進行になる。ASSIST は心地良さの補助輪。</li>
 <li>CRUISE — 自動演奏。5〜120分、∞ループ、シャッフル。環境音動画のように流しておける。</li>
 <li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。</li>
 </ul>
@@ -682,9 +700,9 @@ const I18N = {
     close: "close",
     cruiseEnd: "cruise ended — good night",
     hist: [
-      ["v003", "Auto-cruise (5–120 min, ∞, shuffle), per-genre rhythm, fades, three languages, themes, journal & ripple-garden tabs."],
-      ["v002", "BOWL mode, ten genre progressions, spacebar play & bow strokes, comfort assist."],
-      ["v001", "Wave-equation water, five modes, event-driven Web Audio, WAV recording."],
+      ["v004", "Scene-named harmony (library, neon, lull, haze…), progressions & grooves rebuilt around off-beats, chord-snapped reflections, a pinch of friction."],
+      ["v003", "Auto-cruise (5–120 min, ∞, shuffle), fades, three languages, themes, journal & ripple-garden tabs."],
+      ["v002", "BOWL mode, chord-progression harmony, spacebar play & bow strokes, comfort assist."],
     ],
     journal: `
 <h2>journal — small notes on water & ambient sound</h2>
@@ -703,7 +721,7 @@ const I18N = {
 <li>2017 — lo-fi hip hop radio: music that never stops becomes everyday furniture.</li>
 </ul>
 <h2>The invention of length</h2>
-<p>Ambient videos are valuable because they do not end. Not five beautiful minutes, but ninety minutes of presence. Cruise mode is a self-generating version of that: from five minutes to two hours, or forever, the water plays itself. Light up shuffle and modes and genres slowly trade places.</p>
+<p>Ambient videos are valuable because they do not end. Not five beautiful minutes, but ninety minutes of presence. Cruise mode is a self-generating version of that: from five minutes to two hours, or forever, the water plays itself. Light up shuffle and modes and scenes slowly trade places.</p>
 <p class="note">※ Keep the volume low. Effects vary; this is cultural history, not medical advice.</p>`,
     about: `
 <h2>what is ripple-garden</h2>
@@ -714,7 +732,7 @@ const I18N = {
 <li>Drag — stroke the water. Spacebar — a drop at the pointer; tap it rhythmically.</li>
 <li>Hold space and move the pointer — bowing: an arpeggio walks along your movement.</li>
 <li>MODE — the water's character and timbre: CALM / GLASS / STORM / RESONANCE / ZEN / BOWL.</li>
-<li>HARMONY — pick a genre and the horizontal axis becomes a chord progression. ASSIST keeps it pleasant.</li>
+<li>HARMONY — pick a scene (library, neon, lull…) and the horizontal axis becomes a chord progression. ASSIST keeps it pleasant.</li>
 <li>CRUISE — self-playing mode, 5–120 minutes, ∞ loop, shuffle. Leave it on like an ambient video.</li>
 <li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends.</li>
 </ul>
@@ -728,9 +746,9 @@ const I18N = {
     close: "fermer",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
-      ["v003", "Croisière automatique (5–120 min, ∞, aléatoire), rythmes par genre, fondus, trois langues, thèmes, onglets journal & ripple-garden."],
-      ["v002", "Mode BOWL, dix progressions d'accords, jeu à la barre d'espace et coups d'archet, assistance de confort."],
-      ["v001", "Eau par équation d'onde, cinq modes, Web Audio événementiel, enregistrement WAV."],
+      ["v004", "Harmonies renommées en scènes (library, neon, lull, haze…), progressions et grooves à contretemps, réflexions accordées, un soupçon de friction."],
+      ["v003", "Croisière automatique (5–120 min, ∞, aléatoire), fondus, trois langues, thèmes, onglets journal & ripple-garden."],
+      ["v002", "Mode BOWL, harmonies par progressions d'accords, jeu à la barre d'espace et coups d'archet, assistance de confort."],
     ],
     journal: `
 <h2>journal — petites notes sur l'eau et le son ambiant</h2>
@@ -749,7 +767,7 @@ const I18N = {
 <li>2017 — lo-fi hip hop radio : la musique qui ne s'arrête pas devient un meuble du quotidien.</li>
 </ul>
 <h2>L'invention de la durée</h2>
-<p>Les vidéos ambiantes valent par leur refus de finir. Non pas cinq belles minutes, mais quatre-vingt-dix minutes de présence. Le mode croisière en est la version auto-générée : de cinq minutes à deux heures, ou à l'infini, l'eau joue seule. Allumez le mode aléatoire et les modes et genres s'échangent lentement.</p>
+<p>Les vidéos ambiantes valent par leur refus de finir. Non pas cinq belles minutes, mais quatre-vingt-dix minutes de présence. Le mode croisière en est la version auto-générée : de cinq minutes à deux heures, ou à l'infini, l'eau joue seule. Allumez le mode aléatoire et les modes et scènes s'échangent lentement.</p>
 <p class="note">※ Volume bas conseillé. Les effets varient ; ceci est de l'histoire culturelle, pas un avis médical.</p>`,
     about: `
 <h2>qu'est-ce que ripple-garden</h2>
@@ -760,7 +778,7 @@ const I18N = {
 <li>Glisser — caresser l'eau. Barre d'espace — une goutte sous le pointeur ; frappez-la en rythme.</li>
 <li>Espace maintenu + déplacement — l'archet : un arpège marche le long de votre geste.</li>
 <li>MODE — le caractère de l'eau : CALM / GLASS / STORM / RESONANCE / ZEN / BOWL.</li>
-<li>HARMONY — choisissez un genre et l'axe horizontal devient une progression d'accords. ASSIST garde le tout agréable.</li>
+<li>HARMONY — choisissez une scène (library, neon, lull…) et l'axe horizontal devient une progression d'accords. ASSIST garde le tout agréable.</li>
 <li>CRUISE — jeu automatique, 5–120 minutes, boucle ∞, aléatoire. À laisser tourner comme une vidéo ambiante.</li>
 <li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO.</li>
 </ul>
@@ -843,6 +861,11 @@ function pitchAt(x01, y01, arpStep){
     }
   }
   idx = Math.max(0, Math.min(lad.length - 1, idx));
+  // 違和感の匙加減: ごく稀に隣の段へ滑る。完全な正しさは退屈の入口
+  const fr = genre().friction || 0;
+  if (fr && arpStep === undefined && Math.random() < fr){
+    idx = Math.max(0, Math.min(lad.length - 1, idx + (Math.random() < .5 ? -1 : 1)));
+  }
   melody.idx = idx; melody.t = performance.now();
   let f = lad[idx];
   const m = mode();
@@ -1303,9 +1326,13 @@ const audio = (() => {
     const vol = e * state.reflect * m.reflGain * .07;
     if (vol < .003) return;
     const pan = wall === 0 ? -.8 : wall === 1 ? .8 : (rp.x / VW * 2 - 1) * .6;
+    // 反射音は「いまそこにあるコード」へ吸着して跳ね返る
+    const wx01 = wall === 0 ? .02 : wall === 1 ? .98 : rp.x / VW;
+    let rf = rp.freq * 2.01;
+    if (genre().prog || state.assist) rf = nearestTone(rf, currentLadder(wx01));
     const out = voiceOut(pan, m.send * .7);
     const g = envGain(out, vol, .003, .5, t);
-    osc("sine", rp.freq * 2.01, t, t + .9).connect(g);
+    osc("sine", rf, t, t + .9).connect(g);
     const src = ctx.createBufferSource(); src.buffer = noiseBuf;
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass"; hp.frequency.value = 3000;
@@ -1465,7 +1492,7 @@ function cruiseDrop(vel, light){
   }
   cruise.y01 = Math.max(.08, Math.min(.92, cruise.y01 + (Math.random() - .5) * .2));
   const y = cruise.y01 * VH;
-  spawnDrop(x, y, .5 + vel * .45, { light });
+  spawnDrop(x, y, (.5 + vel * .45) * (.85 + Math.random() * .3), { light }); // 強さも人間的に揺らす
   // 強拍ではときどき分散和音の駆け上がり
   if (!light && vel >= .8 && Math.random() < .18 && g.prog){
     const stepDur = 60000 / g.bpm / 4;
@@ -1495,7 +1522,8 @@ function cruiseTick(now){
       if (cruise.step % 16 === 0) cruise.bar++;
       // スウィング: 裏の16分を後ろへもたれさせる
       const swing = (cruise.step % 2 === 1) ? g.swing * stepDur : -((g.swing * stepDur) * .5);
-      cruise.nextStep += stepDur + swing;
+      const human = (Math.random() - .5) * (g.friction || 0) * 120; // 刻みの人間的なよれ
+      cruise.nextStep += stepDur + swing + human;
     }
   } else {
     // 拍を持たないジャンル（FREE / AMBIENT）はポアソン的に
