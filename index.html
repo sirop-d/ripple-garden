@@ -3,10 +3,12 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v006
-  担当AI名: Claude / クー
+  @version v007
+  担当AI名: Codex / コウ
 
   更新履歴:
+  - v007_20260613_075618: v006の音響挙動を保持したまま、版日付・README・入口・仕様書・
+    公開導線を現在地へ同期する正常化版。
   - v006_20260613_064540: ASSIST再定義（ON=違和感ゼロ・反射音含め心地良いコードへ最適化 /
     OFF=frictionがたまに混入） / ハーモニーを「気持ちの良いコード進行」10種へ再構築
     （王道・カノン8列・小室・丸の内・アクシス・50s・ツーファイブ・循環・サス・マイナー9th） /
@@ -14,8 +16,6 @@
     SUSTAINスイッチ / 更新履歴5件＋全件展開（shima-shima踏襲） / 銘の3言語化 /
     about表記更新 / ファビコン（SVG＋PNG）
   - v005_20260612_175140: 公開準備。OGPメタタグ追加 / Public化・Pages・README・LICENSE
-  - v004_20260612_172935: 情景ハーモニー / コード進行再設計 / 反射音コード吸着 /
-    裏拍グルーヴ / 違和感の匙加減（friction）
 -->
 <html lang="ja">
 <head>
@@ -396,7 +396,7 @@
 
 <button id="brand" aria-label="home">
   <h1>ripple-garden</h1>
-  <span class="sub" id="brandSub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V006</span>
+  <span class="sub" id="brandSub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V007</span>
 </button>
 
 <nav id="tabs">
@@ -505,9 +505,9 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v006";
+const VERSION = "v007";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
-const VERSION_DATE = "2026.06.12";
+const VERSION_DATE = "2026.06.13";
 
 /* ---------- 1. モード定義 ---------- */
 /* c2: 伝播係数(CFL<0.5) / sub: サブステップ / k: 減衰 / amp: 振幅 / octShift: 和声時音域
@@ -738,6 +738,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v007", "v006の音響挙動を保持したまま、版日付・README・入口・仕様書・公開導線を現在地へ同期する正常化版。"],
       ["v006", "ASSIST再定義（ON=心地良いコードへ完全最適化 / OFF=違和感がたまに混入）、定番コード進行10種、木琴・鉄琴・ノイズ3色の新モード、SUSTAIN、更新履歴の全件表示、銘の3言語化、ファビコン。"],
       ["v005", "一般公開。OGPサムネイル、README、GitHub Pages。"],
       ["v004", "ハーモニーを情景名へ刷新、進行とグルーヴを裏拍文化へ再設計、反射音のコード吸着、違和感の匙加減。"],
@@ -789,6 +790,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v007", "Documentation normalisation release: preserves v006 audio behaviour while synchronising the release date, README, project entry, specification and public routes."],
       ["v006", "ASSIST reframed (ON = fully optimised to pleasant chords / OFF = occasional friction), ten classic progressions, xylophone/glockenspiel/noise modes, SUSTAIN, full history view, localised brand, favicon."],
       ["v005", "Public release. OGP thumbnail, README, GitHub Pages."],
       ["v004", "Scene-named harmony, off-beat grooves, chord-snapped reflections, a pinch of friction."],
@@ -840,6 +842,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v007", "Version de normalisation documentaire : conserve le comportement audio de v006 et synchronise la date, le README, l'entrée du projet, la spécification et les routes publiques."],
       ["v006", "ASSIST repensé (ON = tout optimisé vers des accords agréables / OFF = friction occasionnelle), dix progressions classiques, modes xylophone/glockenspiel/bruits, SUSTAIN, historique complet, marque localisée, favicon."],
       ["v005", "Sortie publique. Vignette OGP, README, GitHub Pages."],
       ["v004", "Harmonies en scènes, grooves à contretemps, réflexions accordées, un soupçon de friction."],
