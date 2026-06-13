@@ -3,27 +3,22 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v010
-  担当AI名: Codex / コウ
+  @version v011
+  担当AI名: Claude / クー
 
   更新履歴:
+  - v011_20260614_014211: パネルv2＋低電力＋小調整。①ripple-gardenタブに自作曲(SUNO)の
+    おまけコーナーを3言語で追加 / ②④HARMONY⇄NOISE TONEをモード連動表示（NORMAL=HARMONY /
+    NOISE=NOISE TONE）/ ③CRUISEをHARMONY上へ移動しプレイヤー化（▶⇄■・次の曲・REPEAT・SHUFFLE
+    のアイコン、VOLUMEをCRUISE内へ、次の曲はSHUFFLE ON時だけ有効）/ ⑤WATERをトグル化＝低電力ECO
+    （OFFで描画・波面計算・反射/干渉/きらめき停止、音は継続。タブ非表示でも自動ECO、復帰時再基準化）/
+    ⑥GLASSのゲインを70%へ（bellMix 1→.7）。
   - v010_20260613_185659: MODEを縦13行からNORMAL / NOISEセグメント＋各ドロップダウンへ再編。
     NORMAL↔NOISEの境界を音が鳴っている時だけ確認し、NOISE中はSHUFFLEを自動OFF・無効化、
     通常音へ戻ると直前状態を復元 / iPhoneのメニュー下端までスクロール可能にするdvh・safe-area対応 /
     ノイズモード中の音程付き反射音を停止。
-  - v009_20260613_173751: 長時間運用の安定化。①発音が終わった声部（voiceOutのゲイン/
-    パンナー）をリバーブ残響ぶん待ってから切断・解放し、dryへ繋ぎっぱなしのAudioNode蓄積
-    （長時間でページが固まる一因）を防止 / ②一定時間ごと（既定120分）に自動クリーンアップ。
-    clearWaterのフェードアウト→掃除→フェードインを再利用し、聴感を途切れさせず波面・波紋・
-    グローをリセット。手弾きが途切れている時だけ実行（クルーズ中は常時対象）。
-  - v008_20260613_130442: ノイズ3モード（ブラウン/ピンク/ホワイト）に持続ノイズベッドを追加。
-    従来は波紋ごとの減衰音のみで音圧が出なかったため、CRUISE中にノイズモードを選ぶと
-    連続ドローンが鳴るようにした / 高・中・低の3バンドつまみ（NOISE TONE = ローシェルフ/
-    ピーキング/ハイシェルフ）でトーン調整 / ブラウンには48Hzのサブ低音を薄く重ねて
-    お腹に響く芯を補強 / 通常音→ノイズで音量を約10%へ自動で絞り爆音を防止（戻すと復帰）/
-    シャッフルはノイズ3モードを選ばないよう除外 / ripple-gardenタブにノイズ3種の使用法と
-    効用を3言語で追記 / ページ離脱時に音を確実に止めるteardownを追加 /
-    集中・睡眠・不安鎮静のリラックス音響を強化。
+  - v009_20260613_173751: 長時間運用の安定化。発音が終わった声部のノードを残響後に解放し
+    dryへの蓄積（フリーズ一因）を防止 / 既定120分ごとに自動クリーンアップ（フェードで聴感を切らず掃除）。
 -->
 <html lang="ja">
 <head>
@@ -253,12 +248,22 @@
     content:"●"; font-size:7px; margin-right:5px;
     animation:pulse 1.6s ease-in-out infinite;
   }
-  #btnCruise.running{ color:var(--accent); }
-  #btnCruise.running::before{
-    content:"●"; font-size:7px; margin-right:5px;
-    animation:pulse 2.2s ease-in-out infinite;
-  }
   @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  /* CRUISEプレイヤー: ▶/■・次の曲・リピート・シャッフルのアイコンボタン */
+  .transport{ display:flex; align-items:center; gap:10px; margin:2px 0 12px; }
+  .tp-btn{
+    display:flex; align-items:center; justify-content:center;
+    width:34px; height:34px; border-radius:50%;
+    border:1px solid var(--hairline); background:transparent;
+    color:var(--ink-dim); cursor:pointer;
+    transition:color .2s, background .2s, border-color .2s, opacity .2s;
+  }
+  .tp-btn:hover:not([disabled]){ color:var(--ink); }
+  .tp-btn[disabled]{ opacity:.3; cursor:not-allowed; }
+  .tp-btn[aria-pressed="true"]{ color:var(--accent); border-color:var(--accent); background:var(--hairline); }
+  .tp-play{ width:44px; height:44px; border-color:var(--accent); color:var(--accent); background:rgba(128,160,190,.06); }
+  .tp-play.running{ background:var(--hairline); }
 
   .keys{
     margin-top:14px; font-size:7.5px; letter-spacing:.16em;
@@ -447,7 +452,22 @@
       <select id="selNoiseMode" aria-label="noise mode" disabled></select>
     </div>
   </div>
-  <div class="sec">
+  <div class="sec" id="cruiseSec">
+    <div class="sec-label">CRUISE</div>
+    <div class="transport" role="group" aria-label="cruise transport">
+      <button id="btnCruise" class="tp-btn tp-play" type="button" aria-label="再生"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><polygon points="7,5 19,12 7,19" fill="currentColor"/></svg></button>
+      <button id="btnNext" class="tp-btn" type="button" aria-label="次の曲" disabled><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><polygon points="6,5 15,12 6,19" fill="currentColor"/><rect x="16" y="5" width="2.4" height="14" rx="1" fill="currentColor"/></svg></button>
+      <button id="btnRepeat" class="tp-btn" type="button" aria-label="リピート" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/></svg></button>
+      <button id="btnShuffle" class="tp-btn" type="button" aria-label="シャッフル" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h4v4"/><path d="M4 20L20 4"/><path d="M16 20h4v-4"/><path d="M4 4l5 5"/><path d="M15 15l5 5"/></svg></button>
+    </div>
+    <div class="ctl" id="cruiseTimeRow">
+      <label>TIME</label>
+      <input type="range" id="sCruise" min="5" max="120" step="5" value="30">
+      <span class="val" id="cruiseVal">30m</span>
+    </div>
+    <div class="ctl"><label>VOLUME</label><input type="range" id="sVolume" min="0" max="1" step="0.01" value="0.75"></div>
+  </div>
+  <div class="sec" id="harmonySec">
     <div class="sec-label">HARMONY</div>
     <div class="sel-wrap"><select id="selGenre" aria-label="genre"></select></div>
     <div class="trow" id="assistToggle">
@@ -457,33 +477,19 @@
       <span class="a-lbl">SUSTAIN</span><span class="a-line"></span><span class="a-state">OFF</span>
     </div>
   </div>
-  <div class="sec">
-    <div class="sec-label">WATER</div>
-    <div class="ctl"><label>LIFE</label><input type="range" id="sLife" min="0.4" max="2.2" step="0.01" value="1"></div>
-    <div class="ctl"><label>SPEED</label><input type="range" id="sSpeed" min="0.5" max="1.5" step="0.01" value="1"></div>
-    <div class="ctl"><label>REFLECT</label><input type="range" id="sReflect" min="0" max="1" step="0.01" value="0.75"></div>
-    <div class="ctl"><label>VOLUME</label><input type="range" id="sVolume" min="0" max="1" step="0.01" value="0.75"></div>
-  </div>
-  <div class="sec">
-    <div class="sec-label">CRUISE</div>
-    <div class="ctl" id="cruiseTimeRow">
-      <label>TIME</label>
-      <input type="range" id="sCruise" min="5" max="120" step="5" value="30">
-      <span class="val" id="cruiseVal">30m</span>
-    </div>
-    <div class="trow off" id="loopToggle">
-      <span class="a-lbl">LOOP ∞</span><span class="a-line"></span><span class="a-state">OFF</span>
-    </div>
-    <div class="trow off" id="shuffleToggle">
-      <span class="a-lbl">SHUFFLE</span><span class="a-line"></span><span class="a-state">OFF</span>
-    </div>
-    <div class="btn-row" style="margin-top:12px"><button id="btnCruise">START</button></div>
-  </div>
-  <div class="sec">
+  <div class="sec" id="noiseToneSec" hidden>
     <div class="sec-label">NOISE TONE</div>
     <div class="ctl"><label>BASS</label><input type="range" id="sNoiseBass" min="-12" max="12" step="0.5" value="4"></div>
     <div class="ctl"><label>MID</label><input type="range" id="sNoiseMid" min="-12" max="12" step="0.5" value="0"></div>
     <div class="ctl"><label>TREBLE</label><input type="range" id="sNoiseHigh" min="-12" max="12" step="0.5" value="-3"></div>
+  </div>
+  <div class="sec" id="waterSec">
+    <div class="trow" id="waterToggle" title="OFFで動的グラフィックを止めて省電力（音は継続）">
+      <span class="a-lbl">WATER</span><span class="a-line"></span><span class="a-state">ON</span>
+    </div>
+    <div class="ctl" id="ctlLife"><label>LIFE</label><input type="range" id="sLife" min="0.4" max="2.2" step="0.01" value="1"></div>
+    <div class="ctl" id="ctlSpeed"><label>SPEED</label><input type="range" id="sSpeed" min="0.5" max="1.5" step="0.01" value="1"></div>
+    <div class="ctl" id="ctlReflect"><label>REFLECT</label><input type="range" id="sReflect" min="0" max="1" step="0.01" value="0.75"></div>
   </div>
   <div class="sec">
     <div class="sec-label">RECORD</div>
@@ -540,7 +546,7 @@
 <script>
 "use strict";
 /* ============================================================
-   ripple-garden v010
+   ripple-garden v011
    構成:
      1. モード定義（水の物性 × 音色）
      2. ハーモニー定義（定番コード進行・グルーヴ・違和感の匙加減）
@@ -556,9 +562,9 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v010";
+const VERSION = "v011";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
-const VERSION_DATE = "2026.06.13";
+const VERSION_DATE = "2026.06.14";
 
 /* ---------- 1. モード定義 ---------- */
 /* c2: 伝播係数(CFL<0.5) / sub: サブステップ / k: 減衰 / amp: 振幅 / octShift: 和声時音域
@@ -576,7 +582,7 @@ const MODES = [
   { id:"glass", name:"GLASS", jp:"硝子",
     c2:.30, sub:1, k:.0020, amp:1.25, octShift:12, voice:"bell",
     root:76, scale:[0,2,4,7,9],
-    partials:[[1,1],[2.756,.32],[5.404,.1]], bellMix:1, dropMix:.2, splash:0,
+    partials:[[1,1],[2.756,.32],[5.404,.1]], bellMix:.7, dropMix:.2, splash:0,
     decay:3.4, send:.32, interGain:1.2, jitter:2, shimmer:.008, reflGain:.8,
     heightGain:130, shadeGain:210,
     base:[5,9,14], crest:[150,200,228], trough:[14,28,50], lbase:[216,229,237] },
@@ -789,6 +795,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v011", "パネルを刷新。CRUISEをプレイヤー化（▶⇄■・次の曲・リピート・シャッフルのアイコン、VOLUMEを同居）し、HARMONYとNOISE TONEをモードに連動して入れ替え表示。WATERをトグルにして低電力モード（OFFで動的グラフィックと反射・干渉・きらめきを止め、音は継続）。GLASSの音量を控えめに調整し、ripple-gardenタブにこの庭から生まれた自作曲のおまけを追加。"],
       ["v010", "MODEをNORMAL / NOISEの2グループとドロップダウンへ再編。音が鳴っている時だけグループ境界の切替を確認し、NOISE中はSHUFFLEを自動で止めて無効化、NORMALへ戻ると直前状態を復元。iPhoneメニューの下端スクロールとsafe-areaに対応し、ノイズ中の音程付き反射音も停止。"],
       ["v009", "長時間運用の安定化。発音が終わった声部のオーディオノードをリバーブ残響ぶん待ってから解放し、長時間でページが重く・固まる一因（ノードの蓄積）を防止。さらに既定120分ごとに自動クリーンアップを実行し、フェードアウト→掃除→フェードインで聴感を途切れさせず波面と波紋をリセット。"],
       ["v008", "ノイズ3モードに持続ノイズベッドを追加。CRUISE中にブラウン/ピンク/ホワイトを選ぶと連続ドローンが鳴り、波紋ごとの減衰音だけだった頃より音圧が出る。高・中・低の3バンドつまみ（NOISE TONE）でトーン調整、ブラウンには48Hzのサブ低音を補強。通常音→ノイズで音量を約10%へ自動で絞り爆音を防止、シャッフルはノイズを選ばない、ノイズ3種の使い方をripple-gardenタブに追記。集中・睡眠・不安鎮静のための音響強化。"],
@@ -840,6 +847,10 @@ const I18N = {
 <li><strong>BROWN（ブラウン）</strong> — 低音の塊「ゴー」。包まれるような重低音で、集中・睡眠に加えて、不安や動悸が気になるときに気持ちを落ち着けてくれる。BASS つまみを上げると 48Hz のサブ低音と合わさって芯が出る（ヘッドホン推奨）。</li>
 </ul>
 <p class="note">※ ノイズを選ぶと音量は自動で約10%まで絞られます（通常モードからの音量差で驚かないため）。そこから VOLUME で好みに上げてください。シャッフルではノイズは選ばれません。効果には個人差があります。</p>
+<h2>おまけ — この庭から生まれた曲</h2>
+<p>ripple-garden で録音した音から生まれた曲です♪</p>
+<p class="note">Where Ripples Wake — 水底で目覚める ／ 歌詞: sirop ／ 音楽: SUNO</p>
+<iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
 <h2>about sirop</h2>
 <p>sirop（シロップ）。外部記憶OSを育てながら、4つのAIエージェント（コウ/Codex・ソル/Cursor・クー/Claude Code・ラビ/Antigravity）と小さなwebの遊び場を作っている。単一HTMLで動く「触れる小宇宙」シリーズ — gem-cosmos、shima-shima、そして ripple-garden。本作の初回実装はクー/Claude Code (Ultracode)。</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
@@ -852,6 +863,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v011", "Panel overhaul. CRUISE becomes a player (play⇄stop, next, repeat, shuffle icons, with VOLUME alongside); HARMONY and NOISE TONE swap by mode. WATER is now a toggle that doubles as a low-power mode (off stops the visuals plus reflections, interference and shimmer while the sound keeps playing). GLASS is toned down, and the ripple-garden tab gains a bonus track born from this garden."],
       ["v010", "MODE is now split into NORMAL / NOISE groups with compact dropdowns. Crossing the boundary asks only while sound is active; NOISE automatically pauses and disables SHUFFLE, then restores its previous state on return to NORMAL. The iPhone menu now reaches its safe-area bottom, and pitched reflections stay silent in noise modes."],
       ["v009", "Long-session stability. Finished voices now release their audio nodes (after the reverb tail) instead of piling up on the output — a likely cause of the page slowing or freezing over hours. And every 120 minutes by default a quiet auto-cleanup runs: fade out, sweep the wave field and ripples, fade back in, so it resets without breaking the sound."],
       ["v008", "Sustained noise bed added to the three noise modes. During CRUISE, choosing brown/pink/white now plays a continuous drone with real body — previously only per-ripple decaying tones, which felt thin. A three-band NOISE TONE control (bass/mid/treble) shapes it, and brown gains a faint 48 Hz sub-bass. Switching into a noise mode auto-dips the volume to ~10% to prevent a startling jump, shuffle no longer picks noise modes, and the ripple-garden tab now explains how to use the three noises. Tuned for focus, sleep and easing anxiety."],
@@ -903,6 +915,10 @@ const I18N = {
 <li><strong>BROWN</strong> — a low “rrr”, a wrap-around rumble. Beyond focus and sleep, it can settle the mind when anxiety or a racing heartbeat pulls at your attention. Raise BASS to bring in the 48 Hz sub for real body (headphones recommended).</li>
 </ul>
 <p class="note">※ Choosing a noise mode auto-dips the volume to ~10% (so the jump from normal modes doesn't startle). Raise it from there with VOLUME. Shuffle never picks a noise mode. Effects vary from person to person.</p>
+<h2>bonus — a song born from this garden</h2>
+<p>A track grown from sounds recorded in ripple-garden ♪</p>
+<p class="note">Where Ripples Wake ／ lyrics: sirop ／ music: SUNO</p>
+<iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
 <h2>about sirop</h2>
 <p>sirop grows an external-memory OS and builds small web playgrounds with four AI agents (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). A series of single-file “touchable little worlds”: gem-cosmos, shima-shima, and ripple-garden. The first implementation was by Kuu / Claude Code (Ultracode).</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
@@ -915,6 +931,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v011", "Refonte du panneau. CRUISE devient un lecteur (icônes lecture⇄arrêt, suivant, répéter, aléatoire, avec le VOLUME à côté) ; HARMONY et NOISE TONE s'échangent selon le mode. WATER est désormais un interrupteur qui sert aussi de mode basse consommation (off coupe le visuel ainsi que réflexions, interférences et scintillement, le son continue). GLASS est adouci, et l'onglet ripple-garden gagne un morceau bonus né de ce jardin."],
       ["v010", "MODE est désormais séparé en groupes NORMAL / NOISE avec des listes compactes. Le passage de frontière ne demande confirmation que si un son joue ; NOISE coupe et désactive automatiquement SHUFFLE, puis restaure son état au retour vers NORMAL. Le menu iPhone atteint maintenant la zone sûre inférieure et les réflexions tonales restent muettes dans les modes de bruit."],
       ["v009", "Stabilité sur longue durée. Les voix terminées libèrent désormais leurs nœuds audio (après la traîne de réverbération) au lieu de s'accumuler sur la sortie — une cause probable du ralentissement ou du gel de la page après des heures. Et toutes les 120 minutes par défaut, un nettoyage discret s'exécute : fondu sortant, balayage du champ d'ondes et des ondulations, fondu entrant, pour réinitialiser sans casser le son."],
       ["v008", "Nappe de bruit continue ajoutée aux trois modes de bruit. Pendant la CROISIÈRE, choisir brun/rose/blanc déclenche désormais un drone continu avec du corps — auparavant seulement des sons décroissants par ondulation, qui semblaient maigres. Un réglage NOISE TONE à trois bandes (grave/médium/aigu) le façonne, et le brun reçoit un léger sub-grave de 48 Hz. Passer en mode bruit abaisse automatiquement le volume à ~10 % pour éviter un saut surprenant, le mode aléatoire ne choisit plus les bruits, et l'onglet ripple-garden explique l'usage des trois bruits. Pensé pour la concentration, le sommeil et l'apaisement de l'anxiété."],
@@ -966,6 +983,10 @@ const I18N = {
 <li><strong>BROWN (brun)</strong> — un « rrr » grave, une rumeur qui enveloppe. Au-delà de la concentration et du sommeil, il peut apaiser l'esprit quand l'anxiété ou un cœur qui s'emballe tire l'attention. Montez BASS pour amener le sub de 48 Hz et du corps (casque recommandé).</li>
 </ul>
 <p class="note">※ Choisir un mode de bruit abaisse automatiquement le volume à ~10 % (pour éviter la surprise depuis les modes normaux). Remontez-le avec VOLUME. Le mode aléatoire ne choisit jamais un bruit. Les effets varient selon les personnes.</p>
+<h2>bonus — une chanson née de ce jardin</h2>
+<p>Un morceau né de sons enregistrés dans ripple-garden ♪</p>
+<p class="note">Where Ripples Wake ／ paroles : sirop ／ musique : SUNO</p>
+<iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
 <h2>à propos de sirop</h2>
 <p>sirop cultive un OS de mémoire externe et construit de petits terrains de jeu web avec quatre agents IA (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). Une série de « petits mondes à toucher » en un seul fichier : gem-cosmos, shima-shima et ripple-garden. La première implémentation est de Kuu / Claude Code (Ultracode).</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
@@ -985,6 +1006,7 @@ const state = {
   _volBeforeNoise: null, // 通常音→ノイズで音量を絞る前の値（戻すとき用）
   _shuffleBeforeNoise: null, // NOISEへ入る前のSHUFFLE状態（NORMAL復帰時に戻す）
   autoCleanMin: 120, // 長時間運用で蓄積を掃除する自動クリーンアップ間隔（分）。0で無効
+  water: true, // WATER(動的グラフィック) ON/OFF。OFF=低電力ECO（描画・波面計算・反射/干渉/きらめき停止、音は継続）
 };
 const mode = () => MODES[state.modeIdx];
 const genre = () => GENRES[state.genreIdx];
@@ -1899,18 +1921,24 @@ function cruiseTick(now){
 
   // シャッフル: 40〜70秒ごとにジャンルかモードがゆっくり入れ替わる
   if (cruise.shuffle && now - cruise.lastShuffle > 40000 + Math.random() * 30000){
-    cruise.lastShuffle = now;
-    if (Math.random() < .6){
-      const next = 1 + Math.floor(Math.random() * (GENRES.length - 1));
-      ui.setGenre(next);
-      ui.toast(GENRES[next].label[state.lang].split("—")[0].trim());
-    } else {
-      // ノイズ3モードはシャッフル対象から除外（楽器音と質感が違いすぎて驚くため）
-      const pool = MODES.map((_, i) => i).filter(i => MODES[i].voice !== "noise");
-      const next = pool[Math.floor(Math.random() * pool.length)];
-      ui.setMode(next);
-      ui.toast(MODES[next].name + " · " + MODES[next].jp);
-    }
+    cruiseShuffleNow();
+  }
+}
+
+/* シャッフルの一手: ジャンルかモード（ノイズ除外）をひとつ切り替える。
+   クルーズの定期シャッフルと、③「次の曲」ボタンの能動発火で共用する。 */
+function cruiseShuffleNow(){
+  cruise.lastShuffle = performance.now();
+  if (Math.random() < .6){
+    const next = 1 + Math.floor(Math.random() * (GENRES.length - 1));
+    ui.setGenre(next);
+    ui.toast(GENRES[next].label[state.lang].split("—")[0].trim());
+  } else {
+    // ノイズ3モードはシャッフル対象から除外（楽器音と質感が違いすぎて驚くため）
+    const pool = MODES.map((_, i) => i).filter(i => MODES[i].voice !== "noise");
+    const next = pool[Math.floor(Math.random() * pool.length)];
+    ui.setMode(next);
+    ui.toast(MODES[next].name + " · " + MODES[next].jp);
   }
 }
 
@@ -1930,6 +1958,16 @@ const ui = (() => {
   const cruiseBadge = document.getElementById("cruiseBadge");
   const hint = document.getElementById("hint");
   const chordEl = document.getElementById("chordName");
+  // v011 パネルv2: モード連動セクション / CRUISEトランスポート / WATER(ECO)トグル
+  const harmonySec = document.getElementById("harmonySec");
+  const noiseToneSec = document.getElementById("noiseToneSec");
+  const btnNext = document.getElementById("btnNext");
+  const btnRepeat = document.getElementById("btnRepeat");
+  const btnShuffle = document.getElementById("btnShuffle");
+  const waterToggle = document.getElementById("waterToggle");
+  const ctlLife = document.getElementById("ctlLife");
+  const ctlSpeed = document.getElementById("ctlSpeed");
+  const ctlReflect = document.getElementById("ctlReflect");
   const toastEl = document.getElementById("toast");
   const btnRec = document.getElementById("btnRec");
   const btnStop = document.getElementById("btnStop");
@@ -1965,14 +2003,17 @@ const ui = (() => {
     selNoiseMode.disabled = !isNoise;
     selNormalMode.value = String(lastNormalMode);
     selNoiseMode.value = String(lastNoiseMode);
+    // ②④ モード連動: NORMAL=HARMONY表示 / NOISE=NOISE TONE表示
+    harmonySec.hidden = isNoise;
+    noiseToneSec.hidden = !isNoise;
   }
 
   function updateShuffleUI(){
     const isNoise = mode().voice === "noise";
-    shuffleEl.classList.toggle("dim", isNoise);
-    shuffleEl.setAttribute("aria-disabled", isNoise ? "true" : "false");
-    shuffleEl.classList.toggle("off", !cruise.shuffle);
-    shuffleEl.querySelector(".a-state").textContent = cruise.shuffle ? "ON" : "OFF";
+    // SHUFFLEはNOISE時に無効・グレーアウト。次の曲はSHUFFLE ONかつNORMALのときだけ有効
+    btnShuffle.disabled = isNoise;
+    btnShuffle.setAttribute("aria-pressed", (cruise.shuffle && !isNoise) ? "true" : "false");
+    btnNext.disabled = isNoise || !cruise.shuffle;
   }
 
   const modeConfirm = document.getElementById("modeConfirm");
@@ -2097,35 +2138,61 @@ const ui = (() => {
   bind("sNoiseMid", "noiseMid", () => audio.noiseBedSetEQ());
   bind("sNoiseHigh", "noiseTreble", () => audio.noiseBedSetEQ());
 
-  /* --- クルーズ --- */
+  /* --- クルーズ（③ プレイヤー型トランスポート: ▶/■・次・リピート・シャッフル） --- */
   const sCruise = document.getElementById("sCruise");
   const cruiseVal = document.getElementById("cruiseVal");
   const cruiseTimeRow = document.getElementById("cruiseTimeRow");
-  const loopEl = document.getElementById("loopToggle");
-  const shuffleEl = document.getElementById("shuffleToggle");
+  const SVG_PLAY = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><polygon points="7,5 19,12 7,19" fill="currentColor"/></svg>';
+  const SVG_STOP = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></svg>';
   sCruise.addEventListener("input", () => {
     state.cruiseMin = parseInt(sCruise.value, 10);
     cruiseVal.textContent = state.cruiseMin + "m";
   });
-  loopEl.addEventListener("click", () => {
+  // REPEAT = 無限ループ。ON=∞ループ / OFF=TIMEで自動終了（TIME行を沈める）
+  btnRepeat.addEventListener("click", () => {
     cruise.loop = !cruise.loop;
-    loopEl.classList.toggle("off", !cruise.loop);
-    loopEl.querySelector(".a-state").textContent = cruise.loop ? "ON" : "OFF";
+    btnRepeat.setAttribute("aria-pressed", cruise.loop ? "true" : "false");
     cruiseTimeRow.classList.toggle("dim", cruise.loop);
     if (cruise.on) cruise.endAt = cruise.loop ? Infinity : cruise.t0 + state.cruiseMin * 60000;
   });
-  shuffleEl.addEventListener("click", () => {
+  // SHUFFLE（NOISE時は無効）
+  btnShuffle.addEventListener("click", () => {
     if (mode().voice === "noise") return;
     cruise.shuffle = !cruise.shuffle;
+    if (!cruise.shuffle) cruise.lastShuffle = performance.now();
     updateShuffleUI();
+  });
+  // 次の曲: シャッフルの切替を能動発火（SHUFFLE ON かつ NORMAL のときだけ）
+  btnNext.addEventListener("click", () => {
+    if (btnNext.disabled) return;
+    cruiseShuffleNow();
   });
   btnCruise.addEventListener("click", () => { cruise.on ? cruiseStop() : cruiseStart(); });
 
   function cruiseState(){
-    btnCruise.classList.toggle("running", cruise.on);
-    btnCruise.textContent = cruise.on ? "STOP" : "START";
-    cruiseBadge.classList.toggle("on", cruise.on);
+    const playing = cruise.on;
+    btnCruise.classList.toggle("running", playing);
+    btnCruise.innerHTML = playing ? SVG_STOP : SVG_PLAY;
+    btnCruise.setAttribute("aria-label", playing ? "停止" : "再生");
+    cruiseBadge.classList.toggle("on", playing);
   }
+
+  /* --- ⑤ WATER(動的グラフィック) ON/OFF = 低電力ECO --- */
+  function applyWater(){
+    const on = state.water;
+    waterToggle.classList.toggle("off", !on);
+    waterToggle.querySelector(".a-state").textContent = on ? "ON" : "OFF";
+    ctlLife.classList.toggle("dim", !on);
+    ctlSpeed.classList.toggle("dim", !on);
+    ctlReflect.classList.toggle("dim", !on);
+    if (!on){
+      // 波面を静めて一度だけ描画（以降フレームは描画スキップ＝省電力）
+      sim.cur.fill(0); sim.prev.fill(0);
+      ripples.length = 0; glows.length = 0;
+      renderField(performance.now());
+    }
+  }
+  waterToggle.addEventListener("click", () => { state.water = !state.water; applyWater(); });
 
   /* --- 録音 --- */
   btnRec.addEventListener("click", recStart);
@@ -2268,6 +2335,7 @@ const ui = (() => {
   updateModeUI();
   updateShuffleUI();
   cruiseState();
+  applyWater();
 
   /* --- パネル開閉 --- */
   const toggle = document.getElementById("panelToggle");
@@ -2391,9 +2459,12 @@ function frame(now){
   const dt = Math.min(50, now - lastT);
   lastT = now;
   const m = mode();
+  // ⑤ 低電力ECO: WATER OFF か タブ非表示のとき、描画・波面計算・反射/干渉/きらめきを止める
+  // （音・クルーズ・自動クリーンは継続する）。コウのv011設計どおりrAF自体は止めない。
+  const eco = !state.water || document.hidden;
 
-  // 水面の自然な揺らぎ: ごく小さな雫を時折落とす（音は鳴らさない）
-  if (Math.random() < m.shimmer * (dt / 16.7)){
+  // 水面の自然な揺らぎ: ごく小さな雫を時折落とす（音は鳴らさない）。ECO中は止める。
+  if (!eco && Math.random() < m.shimmer * (dt / 16.7)){
     injectImpulse(Math.random() * VW, Math.random() * VH, .022 + Math.random() * .025, 3.5);
   }
 
@@ -2413,15 +2484,32 @@ function frame(now){
 
   if (fadeClear.active && now - fadeClear.t0 > fadeClear.dur) finishClear();
 
-  const steps = m.sub * Math.max(1, Math.round(dt / 16.7));
-  for (let s = 0; s < Math.min(steps, 4); s++) stepField();
-
-  lerpPalette();
-  updateRipples(dt, now);
-  renderField(now);
+  if (!eco){
+    const steps = m.sub * Math.max(1, Math.round(dt / 16.7));
+    for (let s = 0; s < Math.min(steps, 4); s++) stepField();
+    lerpPalette();
+    updateRipples(dt, now);
+    renderField(now);
+  } else {
+    // ECO中は重い波面計算・描画・反射/干渉を止め、波紋/光の蓄積だけ防ぐ
+    if (ripples.length) ripples.length = 0;
+    if (glows.length) glows.length = 0;
+  }
   ui.badges(now);
   requestAnimationFrame(frame);
 }
+
+// タブ復帰時の再基準化: 非表示中に進んだ時間でクルーズが一気に発音しないようにする
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  const now = performance.now();
+  lastT = now;
+  if (cruise.on && !cruise.stopping){
+    cruise.nextStep = now + 200;
+    cruise.nextFree = now + 200;
+    cruise.runQueue.length = 0;
+  }
+});
 
 setupSim();
 requestAnimationFrame(frame);
