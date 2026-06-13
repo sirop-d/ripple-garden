@@ -3,10 +3,15 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v008
+  @version v009
   担当AI名: Claude / クー
 
   更新履歴:
+  - v009_20260613_173751: 長時間運用の安定化。①発音が終わった声部（voiceOutのゲイン/
+    パンナー）をリバーブ残響ぶん待ってから切断・解放し、dryへ繋ぎっぱなしのAudioNode蓄積
+    （長時間でページが固まる一因）を防止 / ②一定時間ごと（既定120分）に自動クリーンアップ。
+    clearWaterのフェードアウト→掃除→フェードインを再利用し、聴感を途切れさせず波面・波紋・
+    グローをリセット。手弾きが途切れている時だけ実行（クルーズ中は常時対象）。
   - v008_20260613_130442: ノイズ3モード（ブラウン/ピンク/ホワイト）に持続ノイズベッドを追加。
     従来は波紋ごとの減衰音のみで音圧が出なかったため、CRUISE中にノイズモードを選ぶと
     連続ドローンが鳴るようにした / 高・中・低の3バンドつまみ（NOISE TONE = ローシェルフ/
@@ -17,10 +22,6 @@
     集中・睡眠・不安鎮静のリラックス音響を強化。
   - v007_20260613_075618: v006の音響挙動を保持したまま、版日付・README・入口・仕様書・
     公開導線を現在地へ同期する正常化版。
-  - v006_20260613_064540: ASSIST再定義（ON=違和感ゼロ・反射音含め心地良いコードへ最適化 /
-    OFF=frictionがたまに混入） / ハーモニーを「気持ちの良いコード進行」10種へ再構築 /
-    新モード7種（木琴・木琴柔・鉄琴・鉄琴柔・ピンク/ブラウン/ホワイトノイズ） /
-    SUSTAINスイッチ / 更新履歴全件展開 / 銘の3言語化 / ファビコン
 -->
 <html lang="ja">
 <head>
@@ -516,7 +517,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v008";
+const VERSION = "v009";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
 const VERSION_DATE = "2026.06.13";
 
@@ -749,6 +750,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v009", "長時間運用の安定化。発音が終わった声部のオーディオノードをリバーブ残響ぶん待ってから解放し、長時間でページが重く・固まる一因（ノードの蓄積）を防止。さらに既定120分ごとに自動クリーンアップを実行し、フェードアウト→掃除→フェードインで聴感を途切れさせず波面と波紋をリセット。"],
       ["v008", "ノイズ3モードに持続ノイズベッドを追加。CRUISE中にブラウン/ピンク/ホワイトを選ぶと連続ドローンが鳴り、波紋ごとの減衰音だけだった頃より音圧が出る。高・中・低の3バンドつまみ（NOISE TONE）でトーン調整、ブラウンには48Hzのサブ低音を補強。通常音→ノイズで音量を約10%へ自動で絞り爆音を防止、シャッフルはノイズを選ばない、ノイズ3種の使い方をripple-gardenタブに追記。集中・睡眠・不安鎮静のための音響強化。"],
       ["v007", "v006の音響挙動を保持したまま、版日付・README・入口・仕様書・公開導線を現在地へ同期する正常化版。"],
       ["v006", "ASSIST再定義（ON=心地良いコードへ完全最適化 / OFF=違和感がたまに混入）、定番コード進行10種、木琴・鉄琴・ノイズ3色の新モード、SUSTAIN、更新履歴の全件表示、銘の3言語化、ファビコン。"],
@@ -810,6 +812,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v009", "Long-session stability. Finished voices now release their audio nodes (after the reverb tail) instead of piling up on the output — a likely cause of the page slowing or freezing over hours. And every 120 minutes by default a quiet auto-cleanup runs: fade out, sweep the wave field and ripples, fade back in, so it resets without breaking the sound."],
       ["v008", "Sustained noise bed added to the three noise modes. During CRUISE, choosing brown/pink/white now plays a continuous drone with real body — previously only per-ripple decaying tones, which felt thin. A three-band NOISE TONE control (bass/mid/treble) shapes it, and brown gains a faint 48 Hz sub-bass. Switching into a noise mode auto-dips the volume to ~10% to prevent a startling jump, shuffle no longer picks noise modes, and the ripple-garden tab now explains how to use the three noises. Tuned for focus, sleep and easing anxiety."],
       ["v007", "Documentation normalisation release: preserves v006 audio behaviour while synchronising the release date, README, project entry, specification and public routes."],
       ["v006", "ASSIST reframed (ON = fully optimised to pleasant chords / OFF = occasional friction), ten classic progressions, xylophone/glockenspiel/noise modes, SUSTAIN, full history view, localised brand, favicon."],
@@ -871,6 +874,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v009", "Stabilité sur longue durée. Les voix terminées libèrent désormais leurs nœuds audio (après la traîne de réverbération) au lieu de s'accumuler sur la sortie — une cause probable du ralentissement ou du gel de la page après des heures. Et toutes les 120 minutes par défaut, un nettoyage discret s'exécute : fondu sortant, balayage du champ d'ondes et des ondulations, fondu entrant, pour réinitialiser sans casser le son."],
       ["v008", "Nappe de bruit continue ajoutée aux trois modes de bruit. Pendant la CROISIÈRE, choisir brun/rose/blanc déclenche désormais un drone continu avec du corps — auparavant seulement des sons décroissants par ondulation, qui semblaient maigres. Un réglage NOISE TONE à trois bandes (grave/médium/aigu) le façonne, et le brun reçoit un léger sub-grave de 48 Hz. Passer en mode bruit abaisse automatiquement le volume à ~10 % pour éviter un saut surprenant, le mode aléatoire ne choisit plus les bruits, et l'onglet ripple-garden explique l'usage des trois bruits. Pensé pour la concentration, le sommeil et l'apaisement de l'anxiété."],
       ["v007", "Version de normalisation documentaire : conserve le comportement audio de v006 et synchronise la date, le README, l'entrée du projet, la spécification et les routes publiques."],
       ["v006", "ASSIST repensé (ON = tout optimisé vers des accords agréables / OFF = friction occasionnelle), dix progressions classiques, modes xylophone/glockenspiel/bruits, SUSTAIN, historique complet, marque localisée, favicon."],
@@ -937,6 +941,7 @@ const state = {
   // NOISE TONE: 持続ノイズベッドの3バンドつまみ（単位 dB）。低=体・中=厚み・高=シャー
   noiseBass: 4, noiseMid: 0, noiseTreble: -3,
   _volBeforeNoise: null, // 通常音→ノイズで音量を絞る前の値（戻すとき用）
+  autoCleanMin: 120, // 長時間運用で蓄積を掃除する自動クリーンアップ間隔（分）。0で無効
 };
 const mode = () => MODES[state.modeIdx];
 const genre = () => GENRES[state.genreIdx];
@@ -1070,9 +1075,11 @@ function injectImpulse(cssX, cssY, amp, radiusCells){
 
 /* フェードクリア: 光も音もゆっくり落としてから払う（バチッと暗転させない） */
 const fadeClear = { active:false, t0:0, dur:1300 };
+let lastAutoClean = 0; // 最後にクリーンアップした時刻（自動クリーンのタイマー基準）
 function clearWater(){
   if (fadeClear.active) return;
   fadeClear.active = true; fadeClear.t0 = performance.now();
+  lastAutoClean = performance.now(); // 手動・自動どちらのクリアでもタイマーを仕切り直す
   audio.fadeTo(0, .9);
 }
 function finishClear(){
@@ -1366,18 +1373,26 @@ const audio = (() => {
     else g.linearRampToValueAtTime(target, now + sec);
   }
 
-  function voiceOut(pan, send){
+  function voiceOut(pan, send, lifeSec){
     const g = ctx.createGain();
+    const chain = [g];
     let tail = g;
     if (ctx.createStereoPanner){
       const p = ctx.createStereoPanner();
       p.pan.value = Math.max(-1, Math.min(1, pan));
-      g.connect(p); tail = p;
+      g.connect(p); tail = p; chain.push(p);
     }
     tail.connect(dry);
     if (send > 0){
       const s = ctx.createGain(); s.gain.value = send;
-      tail.connect(s); s.connect(verb);
+      tail.connect(s); s.connect(verb); chain.push(s);
+    }
+    // 発音とリバーブ残響が完全に終わった後にノードを切断して解放する。
+    // 長時間運用で voiceOut のゲイン/パンナーが dry へ繋ぎっぱなしに蓄積し、
+    // メモリ/CPUを圧迫してページが固まるのを防ぐ。リバーブIRぶん（約3.6秒）＋余白を見込む。
+    if (lifeSec > 0){
+      setTimeout(() => { for (const n of chain){ try { n.disconnect(); } catch(e){} } },
+                 (lifeSec + 5) * 1000);
     }
     return g;
   }
@@ -1530,10 +1545,11 @@ const audio = (() => {
     const f = freq || 440;
     const t = ctx.currentTime + .005;
     const pan = (x01 * 2 - 1) * .75;
-    const out = voiceOut(pan, m.send * (tw.send || 1) * (light ? .7 : 1));
     let decay = m.decay * (tw.decay || 1) * (0.75 + Math.random() * .5) * Math.min(state.life, 1.6);
     if (light) decay *= .45;
     if (state.sustain) decay *= 2.6; // SUSTAIN: ロングトーン
+    // voiceOut には decay を渡して発音終了後にノードを解放させる（decay 確定後に呼ぶ）
+    const out = voiceOut(pan, m.send * (tw.send || 1) * (light ? .7 : 1), decay + 1);
     const atk = m.atkOver || tw.atk || .004;
 
     // ローファイ等: 声部全体を柔らかくするローパス
@@ -1609,7 +1625,7 @@ const audio = (() => {
     const wx01 = wall === 0 ? .02 : wall === 1 ? .98 : rp.x / VW;
     let rf = rp.freq * 2.01;
     if (state.assist) rf = nearestTone(rf, currentLadder(wx01)); // ONは必ず心地良い音へ
-    const out = voiceOut(pan, m.send * .7);
+    const out = voiceOut(pan, m.send * .7, 1);
     const g = envGain(out, vol, .003, .5, t);
     osc("sine", rf, t, t + .9).connect(g);
     const src = ctx.createBufferSource(); src.buffer = noiseBuf;
@@ -1632,7 +1648,7 @@ const audio = (() => {
     const base = strength * m.interGain;
 
     if (m.id === "resonance"){
-      const out = voiceOut(pan, .65);
+      const out = voiceOut(pan, .65, 3);
       let third = (f1 + f2) / 2 * 1.5;
       if (state.assist) third = nearestTone(third, currentLadder(x01));
       for (const [f, v] of [[f1, .05], [f2, .05], [third, .02]]){
@@ -1642,7 +1658,7 @@ const audio = (() => {
     } else {
       let fm = (f1 + f2) / 2;
       if (state.assist) fm = nearestTone(fm, currentLadder(x01));
-      const out = voiceOut(pan, m.send);
+      const out = voiceOut(pan, m.send, 2);
       const g = envGain(out, .035 * base, .12, 1.5, t);
       osc("sine", fm, t, t + 2).connect(g);
     }
@@ -1666,6 +1682,7 @@ const audio = (() => {
 
   function setVolume(v){ if (master) fadeTo(v, .12); }
   function sampleRate(){ return ctx ? ctx.sampleRate : 44100; }
+  function running(){ return !!ctx && ctx.state === "running"; }
 
   /* ページ離脱時の保険: 持続ベッドを止め、AudioContextを停止して音を残さない。
      （通常タブを閉じれば破棄されるが、bfcache等で残るケースへの備え） */
@@ -1675,7 +1692,7 @@ const audio = (() => {
   }
 
   return { ensure, tap, reflect, interfere, setVolume, sampleRate, fadeTo,
-           noiseBedSetEQ, syncNoiseBed, teardown };
+           noiseBedSetEQ, syncNoiseBed, teardown, running };
 })();
 
 // ページを閉じる / 離脱するときに音を確実に止める
@@ -1752,6 +1769,7 @@ function cruiseStart(){
   cruise.nextFree = cruise.t0 + 500;
   cruise.lastShuffle = cruise.t0;
   cruise.runQueue.length = 0;
+  lastAutoClean = cruise.t0; // 自動クリーンのタイマーをクルーズ開始から数える
   audio.fadeTo(0, 0);
   audio.fadeTo(state.volume, 3); // 音のフェードイン
   audio.syncNoiseBed(true); // ノイズモードなら持続ベッドを立ち上げる
@@ -2251,6 +2269,18 @@ function frame(now){
   }
 
   cruiseTick(now);
+
+  // 長時間運用の自動クリーンアップ: 一定時間ごとに clearWater を発火し、
+  // フェードアウト→掃除→フェードインで聴感を途切れさせずに蓄積をリセットする。
+  // 演奏中の急なクリアを避けるため、手弾きが4秒以上途切れている時だけ実行する
+  // （クルーズ中は手弾きしないので常に対象になる）。
+  if (audio.running()){
+    if (!lastAutoClean) lastAutoClean = now;
+    else if (state.autoCleanMin > 0 && now - lastAutoClean > state.autoCleanMin * 60000
+             && !fadeClear.active && now - state.lastTapTime > 4000){
+      clearWater();
+    }
+  }
 
   if (fadeClear.active && now - fadeClear.t0 > fadeClear.dur) finishClear();
 
