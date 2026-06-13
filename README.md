@@ -14,6 +14,7 @@ A generative water instrument. / Un instrument d'eau génératif.
 - 本物の2D波動方程式による水面。波紋の干渉も画面端の反射も、演出ではなく物理として現れます
 - 音は波紋の出来事——着水・反射・干渉——から生まれ、触れた場所が音程・パン・コードを決めます
 - 13のモード: CALM / GLASS / STORM / RESONANCE / ZEN / BOWL に、木琴・鉄琴（硬いバチ／柔らかいバチ）とピンク・ブラウン・ホワイトノイズを追加
+- MODEはNORMAL / NOISEを切り替えて選択。NOISE中はシャッフルを自動停止し、通常音へ戻ると直前状態を復元します
 - 10の定番コード進行: 王道・カノン・小室・丸の内・アクシス・50s・ツーファイブワン・循環・サス・マイナーナインス
 - ASSIST ON は反射音まで心地よいコードへ吸着し、OFF は小さな違和感を残します。SUSTAIN で余韻を伸ばせます
 - スペースキー奏法と弓奏ストローク
@@ -26,6 +27,7 @@ A generative water instrument. / Un instrument d'eau génératif.
 - A water surface driven by the real 2D wave equation — interference and edge reflections emerge from physics, not effects
 - Sound is born from the water's events (drops, reflections, interferences); where you touch sets pitch, pan and chord
 - 13 modes: the original six plus hard/soft xylophone, hard/soft glockenspiel, and pink/brown/white noise
+- MODE is split into NORMAL / NOISE groups; NOISE pauses shuffle and restores its previous state when you return
 - 10 classic chord progressions, including royal road, canon, axis, 50s, ii–V–I, suspended and minor ninth
 - ASSIST ON snaps even reflections toward pleasant chords; OFF leaves a little friction. SUSTAIN extends the resonance
 - Spacebar play & bow strokes
@@ -38,6 +40,7 @@ A generative water instrument. / Un instrument d'eau génératif.
 - Une surface d'eau gouvernée par la véritable équation d'onde 2D — interférences et réflexions naissent de la physique
 - Le son naît des événements de l'eau (gouttes, réflexions, interférences) ; le lieu touché règle hauteur, panoramique et accord
 - 13 modes : les six modes d'origine, xylophone et glockenspiel durs/doux, puis bruits rose/brun/blanc
+- MODE est séparé en groupes NORMAL / NOISE ; NOISE suspend le mode aléatoire puis restaure son état au retour
 - 10 progressions d'accords classiques, dont canon, axis, années 50, ii–V–I, suspendue et neuvième mineure
 - ASSIST ON accorde même les réflexions vers des accords agréables ; OFF conserve un peu de friction. SUSTAIN prolonge la résonance
 - Jeu à la barre d'espace et coups d'archet
