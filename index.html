@@ -3,19 +3,24 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v007
-  担当AI名: Codex / コウ
+  @version v008
+  担当AI名: Claude / クー
 
   更新履歴:
+  - v008_20260613_130442: ノイズ3モード（ブラウン/ピンク/ホワイト）に持続ノイズベッドを追加。
+    従来は波紋ごとの減衰音のみで音圧が出なかったため、CRUISE中にノイズモードを選ぶと
+    連続ドローンが鳴るようにした / 高・中・低の3バンドつまみ（NOISE TONE = ローシェルフ/
+    ピーキング/ハイシェルフ）でトーン調整 / ブラウンには48Hzのサブ低音を薄く重ねて
+    お腹に響く芯を補強 / 通常音→ノイズで音量を約10%へ自動で絞り爆音を防止（戻すと復帰）/
+    シャッフルはノイズ3モードを選ばないよう除外 / ripple-gardenタブにノイズ3種の使用法と
+    効用を3言語で追記 / ページ離脱時に音を確実に止めるteardownを追加 /
+    集中・睡眠・不安鎮静のリラックス音響を強化。
   - v007_20260613_075618: v006の音響挙動を保持したまま、版日付・README・入口・仕様書・
     公開導線を現在地へ同期する正常化版。
   - v006_20260613_064540: ASSIST再定義（ON=違和感ゼロ・反射音含め心地良いコードへ最適化 /
-    OFF=frictionがたまに混入） / ハーモニーを「気持ちの良いコード進行」10種へ再構築
-    （王道・カノン8列・小室・丸の内・アクシス・50s・ツーファイブ・循環・サス・マイナー9th） /
+    OFF=frictionがたまに混入） / ハーモニーを「気持ちの良いコード進行」10種へ再構築 /
     新モード7種（木琴・木琴柔・鉄琴・鉄琴柔・ピンク/ブラウン/ホワイトノイズ） /
-    SUSTAINスイッチ / 更新履歴5件＋全件展開（shima-shima踏襲） / 銘の3言語化 /
-    about表記更新 / ファビコン（SVG＋PNG）
-  - v005_20260612_175140: 公開準備。OGPメタタグ追加 / Public化・Pages・README・LICENSE
+    SUSTAINスイッチ / 更新履歴全件展開 / 銘の3言語化 / ファビコン
 -->
 <html lang="ja">
 <head>
@@ -445,6 +450,12 @@
     <div class="btn-row" style="margin-top:12px"><button id="btnCruise">START</button></div>
   </div>
   <div class="sec">
+    <div class="sec-label">NOISE TONE</div>
+    <div class="ctl"><label>BASS</label><input type="range" id="sNoiseBass" min="-12" max="12" step="0.5" value="4"></div>
+    <div class="ctl"><label>MID</label><input type="range" id="sNoiseMid" min="-12" max="12" step="0.5" value="0"></div>
+    <div class="ctl"><label>TREBLE</label><input type="range" id="sNoiseHigh" min="-12" max="12" step="0.5" value="-3"></div>
+  </div>
+  <div class="sec">
     <div class="sec-label">RECORD</div>
     <div class="btn-row">
       <button id="btnRec">REC</button>
@@ -505,7 +516,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v007";
+const VERSION = "v008";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
 const VERSION_DATE = "2026.06.13";
 
@@ -738,6 +749,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v008", "ノイズ3モードに持続ノイズベッドを追加。CRUISE中にブラウン/ピンク/ホワイトを選ぶと連続ドローンが鳴り、波紋ごとの減衰音だけだった頃より音圧が出る。高・中・低の3バンドつまみ（NOISE TONE）でトーン調整、ブラウンには48Hzのサブ低音を補強。通常音→ノイズで音量を約10%へ自動で絞り爆音を防止、シャッフルはノイズを選ばない、ノイズ3種の使い方をripple-gardenタブに追記。集中・睡眠・不安鎮静のための音響強化。"],
       ["v007", "v006の音響挙動を保持したまま、版日付・README・入口・仕様書・公開導線を現在地へ同期する正常化版。"],
       ["v006", "ASSIST再定義（ON=心地良いコードへ完全最適化 / OFF=違和感がたまに混入）、定番コード進行10種、木琴・鉄琴・ノイズ3色の新モード、SUSTAIN、更新履歴の全件表示、銘の3言語化、ファビコン。"],
       ["v005", "一般公開。OGPサムネイル、README、GitHub Pages。"],
@@ -778,6 +790,14 @@ const I18N = {
 <li>CRUISE — 自動演奏。5〜120分、∞ループ、シャッフル。環境音動画のように流しておける。</li>
 <li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。</li>
 </ul>
+<h2>ノイズ3モードの使い方と効用</h2>
+<p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。モードを選んで CRUISE の START を押すと、途切れない音の層（ノイズベッド）が流れ続ける。NOISE TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
+<ul>
+<li><strong>WHITE（ホワイト）</strong> — 全周波数を均等に含む「シャー」。集中と、外の物音の遮断に。慣れると眠りにも。刺さると感じたら TREBLE を下げて。</li>
+<li><strong>PINK（ピンク）</strong> — 低い方へ傾いた「ザー」。雨や滝のような自然な厚み。ホワイトより柔らかく、集中・遮断・睡眠に。</li>
+<li><strong>BROWN（ブラウン）</strong> — 低音の塊「ゴー」。包まれるような重低音で、集中・睡眠に加えて、不安や動悸が気になるときに気持ちを落ち着けてくれる。BASS つまみを上げると 48Hz のサブ低音と合わさって芯が出る（ヘッドホン推奨）。</li>
+</ul>
+<p class="note">※ ノイズを選ぶと音量は自動で約10%まで絞られます（通常モードからの音量差で驚かないため）。そこから VOLUME で好みに上げてください。シャッフルではノイズは選ばれません。効果には個人差があります。</p>
 <h2>about sirop</h2>
 <p>sirop（シロップ）。外部記憶OSを育てながら、4つのAIエージェント（コウ/Codex・ソル/Cursor・クー/Claude Code・ラビ/Antigravity）と小さなwebの遊び場を作っている。単一HTMLで動く「触れる小宇宙」シリーズ — gem-cosmos、shima-shima、そして ripple-garden。本作の初回実装はクー/Claude Code (Ultracode)。</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
@@ -790,6 +810,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v008", "Sustained noise bed added to the three noise modes. During CRUISE, choosing brown/pink/white now plays a continuous drone with real body — previously only per-ripple decaying tones, which felt thin. A three-band NOISE TONE control (bass/mid/treble) shapes it, and brown gains a faint 48 Hz sub-bass. Switching into a noise mode auto-dips the volume to ~10% to prevent a startling jump, shuffle no longer picks noise modes, and the ripple-garden tab now explains how to use the three noises. Tuned for focus, sleep and easing anxiety."],
       ["v007", "Documentation normalisation release: preserves v006 audio behaviour while synchronising the release date, README, project entry, specification and public routes."],
       ["v006", "ASSIST reframed (ON = fully optimised to pleasant chords / OFF = occasional friction), ten classic progressions, xylophone/glockenspiel/noise modes, SUSTAIN, full history view, localised brand, favicon."],
       ["v005", "Public release. OGP thumbnail, README, GitHub Pages."],
@@ -830,6 +851,14 @@ const I18N = {
 <li>CRUISE — self-playing mode, 5–120 minutes, ∞ loop, shuffle. Leave it on like an ambient video.</li>
 <li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends.</li>
 </ul>
+<h2>the three noise modes — use &amp; benefits</h2>
+<p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Select one and press START in CRUISE: an unbroken layer of sound (the noise bed) keeps flowing. Shape it to your night with the NOISE TONE bass / mid / treble knobs.</p>
+<ul>
+<li><strong>WHITE</strong> — an even “shhh” across all frequencies. For focus and masking outside noise; for sleep once you're used to it. If it feels sharp, lower TREBLE.</li>
+<li><strong>PINK</strong> — a softer “shhh” tilted toward the lows, like rain or a waterfall. Gentler than white, for focus, masking and sleep.</li>
+<li><strong>BROWN</strong> — a low “rrr”, a wrap-around rumble. Beyond focus and sleep, it can settle the mind when anxiety or a racing heartbeat pulls at your attention. Raise BASS to bring in the 48 Hz sub for real body (headphones recommended).</li>
+</ul>
+<p class="note">※ Choosing a noise mode auto-dips the volume to ~10% (so the jump from normal modes doesn't startle). Raise it from there with VOLUME. Shuffle never picks a noise mode. Effects vary from person to person.</p>
 <h2>about sirop</h2>
 <p>sirop grows an external-memory OS and builds small web playgrounds with four AI agents (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). A series of single-file “touchable little worlds”: gem-cosmos, shima-shima, and ripple-garden. The first implementation was by Kuu / Claude Code (Ultracode).</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
@@ -842,6 +871,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v008", "Nappe de bruit continue ajoutée aux trois modes de bruit. Pendant la CROISIÈRE, choisir brun/rose/blanc déclenche désormais un drone continu avec du corps — auparavant seulement des sons décroissants par ondulation, qui semblaient maigres. Un réglage NOISE TONE à trois bandes (grave/médium/aigu) le façonne, et le brun reçoit un léger sub-grave de 48 Hz. Passer en mode bruit abaisse automatiquement le volume à ~10 % pour éviter un saut surprenant, le mode aléatoire ne choisit plus les bruits, et l'onglet ripple-garden explique l'usage des trois bruits. Pensé pour la concentration, le sommeil et l'apaisement de l'anxiété."],
       ["v007", "Version de normalisation documentaire : conserve le comportement audio de v006 et synchronise la date, le README, l'entrée du projet, la spécification et les routes publiques."],
       ["v006", "ASSIST repensé (ON = tout optimisé vers des accords agréables / OFF = friction occasionnelle), dix progressions classiques, modes xylophone/glockenspiel/bruits, SUSTAIN, historique complet, marque localisée, favicon."],
       ["v005", "Sortie publique. Vignette OGP, README, GitHub Pages."],
@@ -882,6 +912,14 @@ const I18N = {
 <li>CRUISE — jeu automatique, 5–120 minutes, boucle ∞, aléatoire. À laisser tourner comme une vidéo ambiante.</li>
 <li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO.</li>
 </ul>
+<h2>les trois modes de bruit — usage &amp; bienfaits</h2>
+<p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un et appuyez sur START en CROISIÈRE : une couche de son ininterrompue (la nappe de bruit) continue de couler. Façonnez-la à votre nuit avec les réglages NOISE TONE grave / médium / aigu.</p>
+<ul>
+<li><strong>WHITE (blanc)</strong> — un « chhh » égal sur toutes les fréquences. Pour la concentration et masquer les bruits extérieurs ; pour le sommeil une fois habitué. S'il semble trop vif, baissez TREBLE.</li>
+<li><strong>PINK (rose)</strong> — un « chhh » plus doux incliné vers les graves, comme la pluie. Plus doux que le blanc, pour la concentration, le masquage et le sommeil.</li>
+<li><strong>BROWN (brun)</strong> — un « rrr » grave, une rumeur qui enveloppe. Au-delà de la concentration et du sommeil, il peut apaiser l'esprit quand l'anxiété ou un cœur qui s'emballe tire l'attention. Montez BASS pour amener le sub de 48 Hz et du corps (casque recommandé).</li>
+</ul>
+<p class="note">※ Choisir un mode de bruit abaisse automatiquement le volume à ~10 % (pour éviter la surprise depuis les modes normaux). Remontez-le avec VOLUME. Le mode aléatoire ne choisit jamais un bruit. Les effets varient selon les personnes.</p>
 <h2>à propos de sirop</h2>
 <p>sirop cultive un OS de mémoire externe et construit de petits terrains de jeu web avec quatre agents IA (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). Une série de « petits mondes à toucher » en un seul fichier : gem-cosmos, shima-shima et ripple-garden. La première implémentation est de Kuu / Claude Code (Ultracode).</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
@@ -896,6 +934,9 @@ const state = {
   tab: "garden",
   lang: "ja", theme: "system",
   cruiseMin: 30,
+  // NOISE TONE: 持続ノイズベッドの3バンドつまみ（単位 dB）。低=体・中=厚み・高=シャー
+  noiseBass: 4, noiseMid: 0, noiseTreble: -3,
+  _volBeforeNoise: null, // 通常音→ノイズで音量を絞る前の値（戻すとき用）
 };
 const mode = () => MODES[state.modeIdx];
 const genre = () => GENRES[state.genreIdx];
@@ -1235,6 +1276,12 @@ const audio = (() => {
   let voices = 0; const MAXV = 40;
   let lastInter = 0;
 
+  // 持続ノイズベッド（CRUISE中にノイズモードで鳴る連続ドローン）
+  let bedLow = null, bedMid = null, bedHigh = null, bedGain = null;
+  let bedSrcs = [], bedSub = null, bedColor = null;
+  // 色ごとの基準音量（素材バッファのRMSが色で大きく違うため補正）。つまみと音量で微調整可
+  const BED_LEVEL = { white: .42, pink: 1.5, brown: .7 };
+
   function ensure(){
     if (ctx) { if (ctx.state === "suspended") ctx.resume(); return true; }
     try{
@@ -1256,8 +1303,9 @@ const audio = (() => {
       verb.connect(wet); wet.connect(master);
       master.connect(limiter); limiter.connect(ctx.destination);
 
-      // ホワイトノイズ（飛沫・反射）とブラウンノイズ（グラスボウル）の素材
-      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      // ホワイトノイズ（飛沫・反射・持続ベッド）とブラウンノイズ（グラスボウル）の素材
+      // ベッドで連続ループするため3秒に延ばし、ループの周期感を目立ちにくくする
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
       const nd = noiseBuf.getChannelData(0);
       for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
 
@@ -1280,6 +1328,15 @@ const audio = (() => {
         p2 = .57000 * p2 + w * 1.0526913;
         pd[i] = (p0 + p1 + p2 + w * .1848) * .18;
       }
+
+      // 持続ノイズベッドの3バンドEQ（低=ローシェルフ / 中=ピーキング / 高=ハイシェルフ）
+      bedLow  = ctx.createBiquadFilter(); bedLow.type  = "lowshelf";  bedLow.frequency.value  = 220;
+      bedMid  = ctx.createBiquadFilter(); bedMid.type  = "peaking";   bedMid.frequency.value  = 1000; bedMid.Q.value = .8;
+      bedHigh = ctx.createBiquadFilter(); bedHigh.type = "highshelf"; bedHigh.frequency.value = 3500;
+      bedGain = ctx.createGain(); bedGain.gain.value = .0001;
+      bedLow.connect(bedMid); bedMid.connect(bedHigh); bedHigh.connect(bedGain);
+      bedGain.connect(dry);
+      noiseBedSetEQ();
 
       setupRecorderTap();
       return true;
@@ -1390,6 +1447,79 @@ const audio = (() => {
     src2.connect(lp); lp.connect(g2);
     src2.start(t); src2.stop(t + decay);
     countVoice(src2);
+  }
+
+  /* ---------- 持続ノイズベッド ----------
+     従来のノイズは波紋ごとに減衰する音程付きの帯域音で、音圧が出なかった。
+     ここでは選択中のノイズ色を広帯域のまま連続ループさせ、3バンドEQと
+     （ブラウンのみ）サブ低音で「お腹に届く」連続ドローンを作る。 */
+  function noiseBedSetEQ(){
+    if (!bedLow) return;
+    const now = ctx.currentTime;
+    bedLow.gain.setTargetAtTime(state.noiseBass, now, .05);
+    bedMid.gain.setTargetAtTime(state.noiseMid, now, .05);
+    bedHigh.gain.setTargetAtTime(state.noiseTreble, now, .05);
+  }
+
+  function noiseBedClearSrcs(delay){
+    const t = ctx.currentTime + Math.max(0, delay || 0);
+    bedSrcs.forEach(s => { try { s.stop(t); } catch(e){} });
+    bedSrcs = [];
+    if (bedSub){ try { bedSub.stop(t); } catch(e){} bedSub = null; }
+  }
+
+  function noiseBedStart(m){
+    if (!ctx || !bedGain) return;
+    const color = m.noise; // "white" | "pink" | "brown"
+    if (bedColor === color && bedSrcs.length) return; // 同じ色で既に鳴っていれば何もしない
+    noiseBedClearSrcs(0); // 色替え時は旧ソースを止める
+    bedColor = color;
+    const buf = color === "pink" ? pinkBuf : color === "brown" ? brownBuf : noiseBuf;
+    // 左右をわずかにデチューンして広がり＋ループの周期感をぼかす
+    for (const [rate, pan] of [[.991, -.6], [1.009, .6]]){
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      src.playbackRate.value = rate;
+      let node = src;
+      if (ctx.createStereoPanner){
+        const p = ctx.createStereoPanner(); p.pan.value = pan;
+        src.connect(p); node = p;
+      }
+      node.connect(bedLow);
+      src.start();
+      bedSrcs.push(src);
+    }
+    // ブラウンだけ48Hzのサブ低音を薄く重ねて芯を補強（お腹に届く成分）
+    if (color === "brown"){
+      bedSub = ctx.createOscillator(); bedSub.type = "sine"; bedSub.frequency.value = 48;
+      const sg = ctx.createGain(); sg.gain.value = .12;
+      bedSub.connect(sg); sg.connect(bedLow);
+      bedSub.start();
+    }
+    // フェードイン
+    const now = ctx.currentTime, target = BED_LEVEL[color] || .5;
+    bedGain.gain.cancelScheduledValues(now);
+    bedGain.gain.setValueAtTime(Math.max(.0001, bedGain.gain.value), now);
+    bedGain.gain.linearRampToValueAtTime(target, now + 2.5);
+  }
+
+  function noiseBedStop(fadeSec){
+    if (!ctx || !bedGain || !bedSrcs.length) return;
+    const s = fadeSec || 2.5, now = ctx.currentTime;
+    bedGain.gain.cancelScheduledValues(now);
+    bedGain.gain.setValueAtTime(Math.max(.0001, bedGain.gain.value), now);
+    bedGain.gain.linearRampToValueAtTime(.0001, now + s);
+    noiseBedClearSrcs(s + .1);
+    bedColor = null;
+  }
+
+  /* 再生状態と現在モードからベッドの入切を決める。
+     active = CRUISE が動いているか。ノイズモード以外、または停止中は消す。 */
+  function syncNoiseBed(active, fadeSec){
+    if (!ctx) return;
+    const m = mode();
+    if (active && m.voice === "noise") noiseBedStart(m);
+    else noiseBedStop(fadeSec);
   }
 
   /* 波紋の発生音。ジャンルの tweak で音色にメリハリを付ける */
@@ -1537,8 +1667,19 @@ const audio = (() => {
   function setVolume(v){ if (master) fadeTo(v, .12); }
   function sampleRate(){ return ctx ? ctx.sampleRate : 44100; }
 
-  return { ensure, tap, reflect, interfere, setVolume, sampleRate, fadeTo };
+  /* ページ離脱時の保険: 持続ベッドを止め、AudioContextを停止して音を残さない。
+     （通常タブを閉じれば破棄されるが、bfcache等で残るケースへの備え） */
+  function teardown(){
+    try { noiseBedStop(0); } catch(e){}
+    try { if (ctx && ctx.state === "running") ctx.suspend(); } catch(e){}
+  }
+
+  return { ensure, tap, reflect, interfere, setVolume, sampleRate, fadeTo,
+           noiseBedSetEQ, syncNoiseBed, teardown };
 })();
+
+// ページを閉じる / 離脱するときに音を確実に止める
+window.addEventListener("pagehide", () => { try { audio.teardown(); } catch(e){} });
 
 /* ---------- 9. 録音と WAV 書き出し ---------- */
 const rec = { active: false, L: [], R: [], len: 0, startedAt: 0 };
@@ -1613,6 +1754,7 @@ function cruiseStart(){
   cruise.runQueue.length = 0;
   audio.fadeTo(0, 0);
   audio.fadeTo(state.volume, 3); // 音のフェードイン
+  audio.syncNoiseBed(true); // ノイズモードなら持続ベッドを立ち上げる
   ui.cruiseState();
   ui.dismissHint();
 }
@@ -1622,6 +1764,7 @@ function cruiseStop(fadeSec){
   cruise.stopping = true;
   const sec = fadeSec || 2.5;
   audio.fadeTo(0, sec); // 音のフェードアウト
+  audio.syncNoiseBed(false, sec); // 持続ベッドも同じ長さで看取る
   setTimeout(() => {
     cruise.on = false; cruise.stopping = false;
     audio.fadeTo(state.volume, 1.5); // 手弾き用に音を戻す
@@ -1699,7 +1842,9 @@ function cruiseTick(now){
       ui.setGenre(next);
       ui.toast(GENRES[next].label[state.lang].split("—")[0].trim());
     } else {
-      const next = Math.floor(Math.random() * MODES.length);
+      // ノイズ3モードはシャッフル対象から除外（楽器音と質感が違いすぎて驚くため）
+      const pool = MODES.map((_, i) => i).filter(i => MODES[i].voice !== "noise");
+      const next = pool[Math.floor(Math.random() * pool.length)];
       ui.setMode(next);
       ui.toast(MODES[next].name + " · " + MODES[next].jp);
     }
@@ -1735,9 +1880,29 @@ const ui = (() => {
   });
 
   function setMode(i){
+    const wasNoise = MODES[state.modeIdx].voice === "noise";
     state.modeIdx = Math.max(0, Math.min(MODES.length - 1, i));
+    const nowNoise = MODES[state.modeIdx].voice === "noise";
     [...modeList.children].forEach((el, j) => el.classList.toggle("active", j === state.modeIdx));
+    // 通常音→ノイズは爆音になりやすいので音量を約10%へ強制的に絞る。
+    // ノイズ→通常音へ戻るときは、絞る前の音量へ復帰する。
+    if (nowNoise && !wasNoise){
+      state._volBeforeNoise = state.volume;
+      applyVolume(.1);
+    } else if (!nowNoise && wasNoise && state._volBeforeNoise != null){
+      applyVolume(state._volBeforeNoise);
+      state._volBeforeNoise = null;
+    }
     resetMelody();
+    audio.syncNoiseBed(cruise.on); // CRUISE中にノイズへ/から切り替えたらベッドも追従
+  }
+
+  /* 音量を state・スライダーUI・実音へまとめて反映（モード切替の自動調整で共用） */
+  function applyVolume(v){
+    state.volume = v;
+    const el = document.getElementById("sVolume");
+    if (el) el.value = String(v);
+    if (!cruise.stopping && !fadeClear.active) audio.setVolume(v);
   }
 
   /* --- ジャンル --- */
@@ -1786,6 +1951,10 @@ const ui = (() => {
   bind("sSpeed", "speed");
   bind("sReflect", "reflect");
   bind("sVolume", "volume", v => { if (!cruise.stopping && !fadeClear.active) audio.setVolume(v); });
+  // NOISE TONE: 持続ノイズベッドの3バンドつまみ
+  bind("sNoiseBass", "noiseBass", () => audio.noiseBedSetEQ());
+  bind("sNoiseMid", "noiseMid", () => audio.noiseBedSetEQ());
+  bind("sNoiseHigh", "noiseTreble", () => audio.noiseBedSetEQ());
 
   /* --- クルーズ --- */
   const sCruise = document.getElementById("sCruise");
