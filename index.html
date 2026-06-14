@@ -3,25 +3,21 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v012
+  @version v014
   担当AI名: Claude / クー
 
   更新履歴:
+  - v014_20260615_031252: ripple-gardenタブの「使い方」を現行UI（NORMAL/NOISE切替・CRUISEプレイヤー・
+    HARMONY⇄NOISE TONE連動・WATER低電力・PREFS）へ全面更新。about siropに、外部記憶OSと
+    「触れる小宇宙」の考え方をコンパクトに1段落追記（3言語）。
+  - v013_20260615_024638: 細部の仕上げ。①更新履歴の全件表示に「簡易表示にもどる」トグルを追加（5件⇄全件を往復）/
+    ②読み物（journal・ripple-garden）の上下フェードを強め、ヘッダー・フッター直前で本文の不透明度が0になるよう調整 /
+    ④about内の初回実装クレジットを Claude Code → Claude Fable 5 (Ultracode) へ更新。③ライトモードのSUNOプレイヤー親和化はSUNO側がダーク固定・環境依存のため見送り。
   - v012_20260614_195529: バグ修正と仕上げ。①クルーズ＋シャッフル中にモード境界で確認窓が
     繰り返し出る不具合を修正（NORMAL↔NOISEの境界だけ確認し、グループ内＝シャッフルの自動切替では出さない）/
     ②GLASSの音量を60%へ微調整（bellMix .7→.6）/ ③更新履歴の全件表示をカード内スクロール可に
     （上下に見切れて閉じられない不具合を修正）/ ④journal・ripple-gardenの読み物を上下フェードにし
     ヘッダー・フッターと本文が重ならないよう調整。
-  - v011_20260614_014211: パネルv2＋低電力＋小調整。①ripple-gardenタブに自作曲(SUNO)の
-    おまけコーナーを3言語で追加 / ②④HARMONY⇄NOISE TONEをモード連動表示（NORMAL=HARMONY /
-    NOISE=NOISE TONE）/ ③CRUISEをHARMONY上へ移動しプレイヤー化（▶⇄■・次の曲・REPEAT・SHUFFLE
-    のアイコン、VOLUMEをCRUISE内へ、次の曲はSHUFFLE ON時だけ有効）/ ⑤WATERをトグル化＝低電力ECO
-    （OFFで描画・波面計算・反射/干渉/きらめき停止、音は継続。タブ非表示でも自動ECO、復帰時再基準化）/
-    ⑥GLASSのゲインを70%へ（bellMix 1→.7）。
-  - v010_20260613_185659: MODEを縦13行からNORMAL / NOISEセグメント＋各ドロップダウンへ再編。
-    NORMAL↔NOISEの境界を音が鳴っている時だけ確認し、NOISE中はSHUFFLEを自動OFF・無効化、
-    通常音へ戻ると直前状態を復元 / iPhoneのメニュー下端までスクロール可能にするdvh・safe-area対応 /
-    ノイズモード中の音程付き反射音を停止。
 -->
 <html lang="ja">
 <head>
@@ -393,8 +389,8 @@
     position:absolute; inset:0; overflow-y:auto;
     padding:112px 26px 90px;
     -webkit-overflow-scrolling:touch;
-    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 96px, #000 calc(100% - 74px), transparent 100%);
-    mask-image:linear-gradient(to bottom, transparent 0, #000 96px, #000 calc(100% - 74px), transparent 100%);
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, transparent 72px, #000 116px, #000 calc(100% - 96px), transparent calc(100% - 60px), transparent 100%);
+    mask-image:linear-gradient(to bottom, transparent 0, transparent 72px, #000 116px, #000 calc(100% - 96px), transparent calc(100% - 60px), transparent 100%);
   }
   .paper{ max-width:620px; margin:0 auto; }
   .paper h2{
@@ -432,8 +428,8 @@
     #footerBtn{ bottom:14px; }
     .reader-scroll{
       padding:128px 20px 80px;
-      -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 64px), transparent 100%);
-      mask-image:linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 64px), transparent 100%);
+      -webkit-mask-image:linear-gradient(to bottom, transparent 0, transparent 92px, #000 132px, #000 calc(100% - 84px), transparent calc(100% - 52px), transparent 100%);
+      mask-image:linear-gradient(to bottom, transparent 0, transparent 92px, #000 132px, #000 calc(100% - 84px), transparent calc(100% - 52px), transparent 100%);
     }
   }
 </style>
@@ -580,9 +576,9 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v012";
+const VERSION = "v014";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
-const VERSION_DATE = "2026.06.14";
+const VERSION_DATE = "2026.06.15";
 
 /* ---------- 1. モード定義 ---------- */
 /* c2: 伝播係数(CFL<0.5) / sub: サブステップ / k: 減衰 / amp: 振幅 / octShift: 和声時音域
@@ -810,9 +806,12 @@ const I18N = {
     themes: ["ライト", "ダーク", "システム"],
     close: "閉じる",
     histAll: "すべての更新履歴を見る",
+    histLess: "簡易表示にもどる",
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v014", "ripple-gardenタブの「使い方」を現行版に刷新。NORMAL/NOISEの切替、プレイヤー型CRUISE（再生・停止・リピート・シャッフル・次の曲・TIME・VOLUME）、モードに連動するHARMONY/NOISE TONE、低電力のWATER、テーマ・言語の切替まで、いまの操作に合わせて書き直した。about siropには、情報を種のように寝かせAIと育てる「外部記憶OS」と「触れる小宇宙」という考え方をコンパクトに添えた。"],
+      ["v013", "細部の仕上げ。更新履歴の全件表示に「簡易表示にもどる」を追加し、5件⇄全件をトグルで往復できるように。journalとripple-gardenの読み物は上下フェードを強め、ヘッダー・フッターの直前で本文が完全に消えるよう調整。about内の初回実装クレジットを更新。"],
       ["v012", "細部の調整と不具合修正。クルーズ＋シャッフル中、モードが自動で入れ替わるたびに確認ダイアログが繰り返し出てしまう不具合を修正（NORMAL↔NOISEの境界を越える時だけ確認し、グループ内の切替や自動シャッフルでは出さない）。GLASSの音量をさらに控えめに微調整。更新履歴の全件表示をカード内でスクロールできるようにして、上下に見切れて閉じられなくなる不具合を解消。journalとripple-gardenの読み物は上下がやわらかくフェードし、ヘッダー・フッターと本文が重ならないよう整えた。"],
       ["v011", "パネルを刷新。CRUISEをプレイヤー化（▶⇄■・次の曲・リピート・シャッフルのアイコン、VOLUMEを同居）し、HARMONYとNOISE TONEをモードに連動して入れ替え表示。WATERをトグルにして低電力モード（OFFで動的グラフィックと反射・干渉・きらめきを止め、音は継続）。GLASSの音量を控えめに調整し、ripple-gardenタブにこの庭から生まれた自作曲のおまけを追加。"],
       ["v010", "MODEをNORMAL / NOISEの2グループとドロップダウンへ再編。音が鳴っている時だけグループ境界の切替を確認し、NOISE中はSHUFFLEを自動で止めて無効化、NORMALへ戻ると直前状態を復元。iPhoneメニューの下端スクロールとsafe-areaに対応し、ノイズ中の音程付き反射音も停止。"],
@@ -853,10 +852,12 @@ const I18N = {
 <li>クリック / タップ — 一滴。縦の位置が音高、横の位置が音の左右とコードを決める。</li>
 <li>ドラッグ — 水面を撫でる。スペースキー — ポインタの位置に一滴。連打でリズムが刻める。</li>
 <li>スペースを押し込みながらポインタを動かす — 弓奏。分散和音が移動方向に沿って歩く。</li>
-<li>MODE — 水の性格と音色。CALM / GLASS / STORM / RESONANCE / ZEN / BOWL に、木琴・鉄琴（硬いバチと毛糸のバチ）、ピンク/ブラウン/ホワイトノイズを加えた13種。</li>
-<li>HARMONY — 定番の心地良いコード進行（王道・カノン・小室・丸の内…）を選ぶと、画面の横軸が進行になる。ASSIST ON で反射音まで心地良く最適化、OFF で違和感がたまに混じる。SUSTAIN でロングトーン。</li>
-<li>CRUISE — 自動演奏。5〜120分、∞ループ、シャッフル。環境音動画のように流しておける。</li>
-<li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。</li>
+<li>MODE — NORMAL と NOISE を切り替え、それぞれのリストから選ぶ。NORMAL は CALM / GLASS / STORM / RESONANCE / ZEN / BOWL と木琴・鉄琴（硬いバチ・毛糸のバチ）の10種、NOISE はホワイト / ピンク / ブラウンの3種。</li>
+<li>CRUISE — 自動演奏のプレイヤー。▶ で再生・■ で停止、リピート（∞ループ）、シャッフル、そのとなりの「次の曲」、TIME（5〜120分）と VOLUME を備える。環境音動画のように流しておける。</li>
+<li>HARMONY / NOISE TONE — モードに連動して入れ替わる。NORMAL では HARMONY＝定番の心地良いコード進行（王道・カノン・小室…）。ASSIST ON で反射音まで心地良く最適化、OFF で違和感がたまに混じる。SUSTAIN でロングトーン。NOISE では NOISE TONE＝低・中・高の3バンドで質感を調整。</li>
+<li>WATER — 動く水面の表示トグル。OFF にすると描画と反射・干渉・きらめきを止める低電力モード（音は鳴り続ける）。出先やバッテリー節約に。LIFE / SPEED / REFLECT で水面の質感を整える。</li>
+<li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。CLEAR で波面をリセット。</li>
+<li>テーマ / 言語 — 画面下の PREFS で、ライト・ダーク・システム、日本語・English・Français を切り替え。</li>
 </ul>
 <h2>ノイズ3モードの使い方と効用</h2>
 <p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。モードを選んで CRUISE の START を押すと、途切れない音の層（ノイズベッド）が流れ続ける。NOISE TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
@@ -871,7 +872,8 @@ const I18N = {
 <p class="note">Where Ripples Wake — 水底で目覚める ／ 歌詞: sirop ／ 音楽: SUNO</p>
 <iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
 <h2>about sirop</h2>
-<p>sirop（シロップ）。外部記憶OSを育てながら、4つのAIエージェント（コウ/Codex・ソル/Cursor・クー/Claude Code・ラビ/Antigravity）と小さなwebの遊び場を作っている。単一HTMLで動く「触れる小宇宙」シリーズ — gem-cosmos、shima-shima、そして ripple-garden。本作の初回実装はクー/Claude Code (Ultracode)。</p>
+<p>sirop（シロップ）。外部記憶OSを育てながら、4つのAIエージェント（コウ/Codex・ソル/Cursor・クー/Claude Code・ラビ/Antigravity）と小さなwebの遊び場を作っている。単一HTMLで動く「触れる小宇宙」シリーズ — gem-cosmos、shima-shima、そして ripple-garden。本作の初回実装はクー/Claude Fable 5 (Ultracode)。</p>
+<p>この庭は、ひとつの考え方から生まれている。情報やひらめきを使い捨てにせず、種のように蒔いて寝かせ、AIと一緒に育てていく——「外部記憶OS」という試み。答えを急がず問いのまま置いておくこと、敵や怒りを燃料にせず静かな場所を守ること、知識を読むだけのものではなく<strong>触れて遊べる小宇宙</strong>に変えること。ripple-garden は、その考え方が手で触れられる形になった小さな結晶のひとつ。</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
   },
   en: {
@@ -879,9 +881,12 @@ const I18N = {
     themes: ["light", "dark", "system"],
     close: "close",
     histAll: "view full history",
+    histLess: "show recent only",
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v014", "Rewrote the “how to play” section in the ripple-garden tab to match the current build: the NORMAL/NOISE switch, the player-style CRUISE (play, stop, repeat, shuffle, next, TIME, VOLUME), the mode-linked HARMONY / NOISE TONE, the low-power WATER toggle, and theme/language. About sirop now carries, in brief, the idea behind it all — an “external-memory OS” that sows information like seeds and grows it with AI, and turning knowledge into little worlds you can touch."],
+      ["v013", "Finishing touches. The full history view gains a “show recent only” toggle, so you can collapse it back to five. The journal and ripple-garden readers now fade harder at top and bottom, so text vanishes completely just before the header and footer. Updated the first-implementation credit in the about section."],
       ["v012", "Polish and fixes. Fixed a bug where the confirm dialog kept popping up every time the mode auto-switched during cruise + shuffle (it now asks only when crossing the NORMAL↔NOISE boundary, never on in-group changes or automatic shuffles). GLASS is toned down a touch further. The full history view now scrolls inside its card, so it can no longer overflow off-screen and trap you with no way to close it. And the journal and ripple-garden readers now fade softly at top and bottom, so the text no longer collides with the header and footer."],
       ["v011", "Panel overhaul. CRUISE becomes a player (play⇄stop, next, repeat, shuffle icons, with VOLUME alongside); HARMONY and NOISE TONE swap by mode. WATER is now a toggle that doubles as a low-power mode (off stops the visuals plus reflections, interference and shimmer while the sound keeps playing). GLASS is toned down, and the ripple-garden tab gains a bonus track born from this garden."],
       ["v010", "MODE is now split into NORMAL / NOISE groups with compact dropdowns. Crossing the boundary asks only while sound is active; NOISE automatically pauses and disables SHUFFLE, then restores its previous state on return to NORMAL. The iPhone menu now reaches its safe-area bottom, and pitched reflections stay silent in noise modes."],
@@ -922,10 +927,12 @@ const I18N = {
 <li>Click / tap — one drop. Vertical position sets pitch, horizontal sets pan and chord.</li>
 <li>Drag — stroke the water. Spacebar — a drop at the pointer; tap it rhythmically.</li>
 <li>Hold space and move the pointer — bowing: an arpeggio walks along your movement.</li>
-<li>MODE — the water's character and timbre: 13 voices, from CALM to BOWL, plus xylophone and glockenspiel (hard & yarn mallets) and pink/brown/white noise.</li>
-<li>HARMONY — pick a classic progression (royal road, canon, 50s…) and the horizontal axis follows it. ASSIST ON optimises everything — even reflections — toward pleasant chords; OFF lets a little friction in. SUSTAIN for long tones.</li>
-<li>CRUISE — self-playing mode, 5–120 minutes, ∞ loop, shuffle. Leave it on like an ambient video.</li>
-<li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends.</li>
+<li>MODE — switch between NORMAL and NOISE, then pick from each list. NORMAL has ten voices (CALM / GLASS / STORM / RESONANCE / ZEN / BOWL plus xylophone and glockenspiel, hard & yarn mallets); NOISE has white / pink / brown.</li>
+<li>CRUISE — a self-playing transport: ▶ play, ■ stop, repeat (∞ loop), shuffle, a “next” button beside it, plus TIME (5–120 min) and VOLUME. Leave it on like an ambient video.</li>
+<li>HARMONY / NOISE TONE — these swap with the mode. In NORMAL, HARMONY picks a classic progression (royal road, canon, 50s…); ASSIST ON optimises everything — even reflections — toward pleasant chords, OFF lets a little friction in, SUSTAIN for long tones. In NOISE, NOISE TONE shapes the bass / mid / treble.</li>
+<li>WATER — a toggle for the moving surface. Turn it OFF for a low-power mode that stops the visuals plus reflections, interference and shimmer (the sound keeps playing) — handy on the go or to save battery. LIFE / SPEED / REFLECT tune the water.</li>
+<li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends. CLEAR resets the surface.</li>
+<li>Theme / language — at the bottom in PREFS: light, dark, system, and 日本語 / English / Français.</li>
 </ul>
 <h2>the three noise modes — use &amp; benefits</h2>
 <p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Select one and press START in CRUISE: an unbroken layer of sound (the noise bed) keeps flowing. Shape it to your night with the NOISE TONE bass / mid / treble knobs.</p>
@@ -940,7 +947,8 @@ const I18N = {
 <p class="note">Where Ripples Wake ／ lyrics: sirop ／ music: SUNO</p>
 <iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
 <h2>about sirop</h2>
-<p>sirop grows an external-memory OS and builds small web playgrounds with four AI agents (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). A series of single-file “touchable little worlds”: gem-cosmos, shima-shima, and ripple-garden. The first implementation was by Kuu / Claude Code (Ultracode).</p>
+<p>sirop grows an external-memory OS and builds small web playgrounds with four AI agents (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). A series of single-file “touchable little worlds”: gem-cosmos, shima-shima, and ripple-garden. The first implementation was by Kuu / Claude Fable 5 (Ultracode).</p>
+<p>This garden grows from one idea. Don't throw away information or sparks of thought — sow them like seeds, let them rest, and raise them together with AI: an attempt at an “external-memory OS.” Don't rush to answers; leave questions as questions. Don't run on enemies or anger; keep a quiet place. And turn knowledge from something you only read into a <strong>little world you can touch and play with</strong>. ripple-garden is one small crystal of that idea, made tangible.</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
   },
   fr: {
@@ -948,9 +956,12 @@ const I18N = {
     themes: ["clair", "sombre", "système"],
     close: "fermer",
     histAll: "voir tout l'historique",
+    histLess: "afficher les récents",
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v014", "Réécriture de la section « comment jouer » de l'onglet ripple-garden pour coller à la version actuelle : la bascule NORMAL/NOISE, la CROISIÈRE de type lecteur (lecture, arrêt, répétition, aléatoire, suivant, TIME, VOLUME), HARMONY / NOISE TONE liés au mode, l'interrupteur WATER basse consommation, et thème/langue. À propos de sirop porte désormais, en bref, l'idée derrière tout cela — un « OS de mémoire externe » qui sème l'information comme des graines et la cultive avec l'IA, et transforme le savoir en petits mondes que l'on touche."],
+      ["v013", "Touches de finition. L'historique complet reçoit une bascule « afficher les récents » pour le replier à cinq entrées. Les lecteurs journal et ripple-garden s'estompent plus nettement en haut et en bas, le texte disparaissant complètement juste avant l'en-tête et le pied de page. Crédit de première implémentation mis à jour dans la section about."],
       ["v012", "Peaufinage et corrections. Correction d'un bug où la boîte de confirmation réapparaissait chaque fois que le mode changeait automatiquement pendant croisière + aléatoire (elle ne demande plus qu'au passage de la frontière NORMAL↔NOISE, jamais lors des changements internes ou aléatoires). GLASS est encore légèrement adouci. L'historique complet défile désormais dans sa carte et ne peut plus déborder hors de l'écran en empêchant la fermeture. Enfin, les lecteurs journal et ripple-garden s'estompent doucement en haut et en bas, pour que le texte ne chevauche plus l'en-tête ni le pied de page."],
       ["v011", "Refonte du panneau. CRUISE devient un lecteur (icônes lecture⇄arrêt, suivant, répéter, aléatoire, avec le VOLUME à côté) ; HARMONY et NOISE TONE s'échangent selon le mode. WATER est désormais un interrupteur qui sert aussi de mode basse consommation (off coupe le visuel ainsi que réflexions, interférences et scintillement, le son continue). GLASS est adouci, et l'onglet ripple-garden gagne un morceau bonus né de ce jardin."],
       ["v010", "MODE est désormais séparé en groupes NORMAL / NOISE avec des listes compactes. Le passage de frontière ne demande confirmation que si un son joue ; NOISE coupe et désactive automatiquement SHUFFLE, puis restaure son état au retour vers NORMAL. Le menu iPhone atteint maintenant la zone sûre inférieure et les réflexions tonales restent muettes dans les modes de bruit."],
@@ -991,10 +1002,12 @@ const I18N = {
 <li>Clic / toucher — une goutte. La hauteur règle la note, l'horizontale le panoramique et l'accord.</li>
 <li>Glisser — caresser l'eau. Barre d'espace — une goutte sous le pointeur ; frappez-la en rythme.</li>
 <li>Espace maintenu + déplacement — l'archet : un arpège marche le long de votre geste.</li>
-<li>MODE — le caractère de l'eau : 13 voix, de CALM à BOWL, plus xylophone et glockenspiel (mailloches dures et en laine) et bruits rose/brun/blanc.</li>
-<li>HARMONY — choisissez une progression classique (route royale, canon, années 50…) et l'axe horizontal la suit. ASSIST ON optimise tout — même les réflexions — vers des accords agréables ; OFF laisse entrer un peu de friction. SUSTAIN pour les notes longues.</li>
-<li>CRUISE — jeu automatique, 5–120 minutes, boucle ∞, aléatoire. À laisser tourner comme une vidéo ambiante.</li>
-<li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO.</li>
+<li>MODE — basculez entre NORMAL et NOISE, puis choisissez dans chaque liste. NORMAL compte dix voix (CALM / GLASS / STORM / RESONANCE / ZEN / BOWL plus xylophone et glockenspiel, mailloches dures et en laine) ; NOISE propose blanc / rose / brun.</li>
+<li>CRUISE — un lecteur automatique : ▶ lecture, ■ arrêt, répétition (boucle ∞), aléatoire, un bouton « suivant » à côté, plus TIME (5–120 min) et VOLUME. À laisser tourner comme une vidéo ambiante.</li>
+<li>HARMONY / NOISE TONE — s'échangent selon le mode. En NORMAL, HARMONY choisit une progression classique (route royale, canon, années 50…) ; ASSIST ON optimise tout — même les réflexions — vers des accords agréables, OFF laisse entrer un peu de friction, SUSTAIN pour les notes longues. En NOISE, NOISE TONE règle grave / médium / aigu.</li>
+<li>WATER — un interrupteur pour la surface animée. OFF active un mode basse consommation qui coupe le visuel ainsi que réflexions, interférences et scintillement (le son continue) — pratique en déplacement ou pour la batterie. LIFE / SPEED / REFLECT ajustent l'eau.</li>
+<li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO. CLEAR réinitialise la surface.</li>
+<li>Thème / langue — en bas dans PREFS : clair, sombre, système, et 日本語 / English / Français.</li>
 </ul>
 <h2>les trois modes de bruit — usage &amp; bienfaits</h2>
 <p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un et appuyez sur START en CROISIÈRE : une couche de son ininterrompue (la nappe de bruit) continue de couler. Façonnez-la à votre nuit avec les réglages NOISE TONE grave / médium / aigu.</p>
@@ -1009,7 +1022,8 @@ const I18N = {
 <p class="note">Where Ripples Wake ／ paroles : sirop ／ musique : SUNO</p>
 <iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
 <h2>à propos de sirop</h2>
-<p>sirop cultive un OS de mémoire externe et construit de petits terrains de jeu web avec quatre agents IA (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). Une série de « petits mondes à toucher » en un seul fichier : gem-cosmos, shima-shima et ripple-garden. La première implémentation est de Kuu / Claude Code (Ultracode).</p>
+<p>sirop cultive un OS de mémoire externe et construit de petits terrains de jeu web avec quatre agents IA (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). Une série de « petits mondes à toucher » en un seul fichier : gem-cosmos, shima-shima et ripple-garden. La première implémentation est de Kuu / Claude Fable 5 (Ultracode).</p>
+<p>Ce jardin naît d'une idée. Ne pas jeter l'information ni les éclairs de pensée — les semer comme des graines, les laisser reposer, et les faire grandir avec l'IA : une tentative d'« OS de mémoire externe ». Ne pas se précipiter vers les réponses ; laisser les questions comme des questions. Ne pas se nourrir d'ennemis ni de colère ; garder un lieu paisible. Et transformer le savoir, de simple lecture en un <strong>petit monde que l'on touche et avec lequel on joue</strong>. ripple-garden est un petit cristal de cette idée, rendu tangible.</p>
 <p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
   },
 };
@@ -2329,16 +2343,20 @@ const ui = (() => {
     const hist = T().hist;
     const li = ([v, txt]) => `<li><b>${v}</b>${txt}</li>`;
     const el = document.getElementById("vmHist");
-    el.innerHTML = hist.slice(0, 5).map(li).join(""); // 最新5件（shima-shima踏襲）
-    if (hist.length > 5){
-      const wrap = document.createElement("li");
-      const more = document.createElement("button");
-      more.className = "vm-more";
-      more.textContent = T().histAll;
-      more.addEventListener("click", () => { el.innerHTML = hist.map(li).join(""); });
-      wrap.appendChild(more);
-      el.appendChild(wrap);
-    }
+    let expanded = false; // 既定は最新5件（shima-shima踏襲）。トグルで全件⇄簡易を往復
+    const render = () => {
+      el.innerHTML = (expanded ? hist : hist.slice(0, 5)).map(li).join("");
+      if (hist.length > 5){
+        const wrap = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.className = "vm-more";
+        btn.textContent = expanded ? T().histLess : T().histAll;
+        btn.addEventListener("click", () => { expanded = !expanded; render(); });
+        wrap.appendChild(btn);
+        el.appendChild(wrap);
+      }
+    };
+    render();
     document.getElementById("vmClose").textContent = T().close;
   }
   document.getElementById("footerBtn").addEventListener("click", () => { verModal.hidden = false; });
