@@ -3,21 +3,21 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v014
+  @version v015
   担当AI名: Claude / クー
 
   更新履歴:
+  - v015_20260615_064450: BOWLモードを重低音サウンドバスへ進化。①触れると立ち上がる超低音ドローン
+    （0.5s立ち上がり→約10s持続→約10s揺らぎ減衰、デチューン＋LFOのうねり）/ ②打音に長い余韻とマレットの芯 /
+    ③TONEを全モード共通化（NORMAL用EQ新設・常時表示・「NOISE TONE」→「TONE」改名）でBOWLの重低音を
+    音割れ寸前まで追い込み可能に / ④BOWLの音域を下げ水面のdampingを緩和、色を深い藍・エメラルド・ゴールドへ /
+    ⑤超低域ハイパス・ドローン同時数制限などの安全策。about/READMEにヘッドホン推奨と使い方を追記。
   - v014_20260615_031252: ripple-gardenタブの「使い方」を現行UI（NORMAL/NOISE切替・CRUISEプレイヤー・
     HARMONY⇄NOISE TONE連動・WATER低電力・PREFS）へ全面更新。about siropに、外部記憶OSと
     「触れる小宇宙」の考え方をコンパクトに1段落追記（3言語）。
   - v013_20260615_024638: 細部の仕上げ。①更新履歴の全件表示に「簡易表示にもどる」トグルを追加（5件⇄全件を往復）/
     ②読み物（journal・ripple-garden）の上下フェードを強め、ヘッダー・フッター直前で本文の不透明度が0になるよう調整 /
     ④about内の初回実装クレジットを Claude Code → Claude Fable 5 (Ultracode) へ更新。③ライトモードのSUNOプレイヤー親和化はSUNO側がダーク固定・環境依存のため見送り。
-  - v012_20260614_195529: バグ修正と仕上げ。①クルーズ＋シャッフル中にモード境界で確認窓が
-    繰り返し出る不具合を修正（NORMAL↔NOISEの境界だけ確認し、グループ内＝シャッフルの自動切替では出さない）/
-    ②GLASSの音量を60%へ微調整（bellMix .7→.6）/ ③更新履歴の全件表示をカード内スクロール可に
-    （上下に見切れて閉じられない不具合を修正）/ ④journal・ripple-gardenの読み物を上下フェードにし
-    ヘッダー・フッターと本文が重ならないよう調整。
 -->
 <html lang="ja">
 <head>
@@ -491,11 +491,11 @@
       <span class="a-lbl">SUSTAIN</span><span class="a-line"></span><span class="a-state">OFF</span>
     </div>
   </div>
-  <div class="sec" id="noiseToneSec" hidden>
-    <div class="sec-label">NOISE TONE</div>
-    <div class="ctl"><label>BASS</label><input type="range" id="sNoiseBass" min="-12" max="12" step="0.5" value="4"></div>
+  <div class="sec" id="noiseToneSec">
+    <div class="sec-label">TONE</div>
+    <div class="ctl"><label>BASS</label><input type="range" id="sNoiseBass" min="-12" max="12" step="0.5" value="0"></div>
     <div class="ctl"><label>MID</label><input type="range" id="sNoiseMid" min="-12" max="12" step="0.5" value="0"></div>
-    <div class="ctl"><label>TREBLE</label><input type="range" id="sNoiseHigh" min="-12" max="12" step="0.5" value="-3"></div>
+    <div class="ctl"><label>TREBLE</label><input type="range" id="sNoiseHigh" min="-12" max="12" step="0.5" value="0"></div>
   </div>
   <div class="sec" id="waterSec">
     <div class="trow" id="waterToggle" title="OFFで動的グラフィックを止めて省電力（音は継続）">
@@ -576,7 +576,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v014";
+const VERSION = "v015";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
 const VERSION_DATE = "2026.06.15";
 
@@ -626,13 +626,14 @@ const MODES = [
     base:[4,6,10], crest:[115,140,162], trough:[12,18,30], lbase:[221,225,229] },
 
   { id:"bowl", name:"BOWL", jp:"鉢",
-    c2:.15, sub:1, k:.0010, amp:1.4, octShift:0, voice:"bowl",
-    root:55, scale:[0,2,4,7,9],
+    c2:.15, sub:1, k:.0007, amp:1.4, octShift:0, voice:"bowl", // k下げ=波がより長く深く残る
+    root:44, scale:[0,2,4,7,9],                                 // 音域を下げ重心を低く（超低音はドローンが担う）
     partials:[[1,1],[2.32,.4],[4.25,.14]], // ガラス鉢の非整数倍音
     bellMix:.9, dropMix:.3, splash:0,
-    decay:5.5, send:.55, interGain:1.4, jitter:0, shimmer:.006, reflGain:.5,
+    decay:8, send:.55, interGain:1.4, jitter:0, shimmer:.006, reflGain:.5, // 余韻を長く
     heightGain:100, shadeGain:175,
-    base:[5,9,10], crest:[140,185,175], trough:[14,30,34], lbase:[210,224,219] },
+    // 深い藍の水底に、静かなゴールドの波頭と暗いエメラルドの谷が蠢く
+    base:[4,10,22], crest:[166,150,98], trough:[8,28,30], lbase:[206,216,214] },
 
   { id:"xylo", name:"XYLOPHONE", jp:"木琴",
     c2:.30, sub:1, k:.0020, amp:1.3, octShift:12, voice:"bell",
@@ -810,6 +811,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v015", "BOWLモードを「お腹に響く重低音サウンドバス」へ進化。水面に触れると超低音のドローンがふわりと立ち上がり、約10秒持続してから約10秒かけて揺らぎながら静かに消える。打音は長い余韻とマレットの芯を持ち、デチューンとLFOで濃密なうねりが生まれる。TONE（旧NOISE TONE）を全モード共通の3バンドEQにして常時表示し、BASS で重低音を音割れ寸前まで追い込めるように。BOWLの音域を下げ水面をより深く長く波打たせ、色を深い藍・エメラルド・ゴールドへ。ヘッドホン推奨。"],
       ["v014", "ripple-gardenタブの「使い方」を現行版に刷新。NORMAL/NOISEの切替、プレイヤー型CRUISE（再生・停止・リピート・シャッフル・次の曲・TIME・VOLUME）、モードに連動するHARMONY/NOISE TONE、低電力のWATER、テーマ・言語の切替まで、いまの操作に合わせて書き直した。about siropには、情報を種のように寝かせAIと育てる「外部記憶OS」と「触れる小宇宙」という考え方をコンパクトに添えた。"],
       ["v013", "細部の仕上げ。更新履歴の全件表示に「簡易表示にもどる」を追加し、5件⇄全件をトグルで往復できるように。journalとripple-gardenの読み物は上下フェードを強め、ヘッダー・フッターの直前で本文が完全に消えるよう調整。about内の初回実装クレジットを更新。"],
       ["v012", "細部の調整と不具合修正。クルーズ＋シャッフル中、モードが自動で入れ替わるたびに確認ダイアログが繰り返し出てしまう不具合を修正（NORMAL↔NOISEの境界を越える時だけ確認し、グループ内の切替や自動シャッフルでは出さない）。GLASSの音量をさらに控えめに微調整。更新履歴の全件表示をカード内でスクロールできるようにして、上下に見切れて閉じられなくなる不具合を解消。journalとripple-gardenの読み物は上下がやわらかくフェードし、ヘッダー・フッターと本文が重ならないよう整えた。"],
@@ -854,13 +856,23 @@ const I18N = {
 <li>スペースを押し込みながらポインタを動かす — 弓奏。分散和音が移動方向に沿って歩く。</li>
 <li>MODE — NORMAL と NOISE を切り替え、それぞれのリストから選ぶ。NORMAL は CALM / GLASS / STORM / RESONANCE / ZEN / BOWL と木琴・鉄琴（硬いバチ・毛糸のバチ）の10種、NOISE はホワイト / ピンク / ブラウンの3種。</li>
 <li>CRUISE — 自動演奏のプレイヤー。▶ で再生・■ で停止、リピート（∞ループ）、シャッフル、そのとなりの「次の曲」、TIME（5〜120分）と VOLUME を備える。環境音動画のように流しておける。</li>
-<li>HARMONY / NOISE TONE — モードに連動して入れ替わる。NORMAL では HARMONY＝定番の心地良いコード進行（王道・カノン・小室…）。ASSIST ON で反射音まで心地良く最適化、OFF で違和感がたまに混じる。SUSTAIN でロングトーン。NOISE では NOISE TONE＝低・中・高の3バンドで質感を調整。</li>
+<li>HARMONY — NORMAL のときのコード進行（王道・カノン・小室…）。ASSIST ON で反射音まで心地良く最適化、OFF で違和感がたまに混じる。SUSTAIN でロングトーン。</li>
+<li>TONE — 音の低・中・高を整える3バンド。常に表示され、NORMAL では全体の音に、NOISE では持続ノイズに効く。とくに BASS は BOWL の重低音を探る要のつまみ。</li>
 <li>WATER — 動く水面の表示トグル。OFF にすると描画と反射・干渉・きらめきを止める低電力モード（音は鳴り続ける）。出先やバッテリー節約に。LIFE / SPEED / REFLECT で水面の質感を整える。</li>
 <li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。CLEAR で波面をリセット。</li>
 <li>テーマ / 言語 — 画面下の PREFS で、ライト・ダーク・システム、日本語・English・Français を切り替え。</li>
 </ul>
+<h2>BOWL ― お腹に響く重低音</h2>
+<p>BOWL は、アルケミークリスタルボウルのような重低音のサウンドバスを目指したモード。ひとつひとつの仕組みを知ると、より深く沈み込めます。</p>
+<ul>
+<li><strong>触れると超低音が立ち上がる</strong> — 水面に触れた瞬間からふわりと低音のドローンが立ち上がり、0.5秒ほどでリッチな響きになります。約10秒そのまま持続し、そこから約10秒かけて、ゆっくりした揺らぎ（うねり）を伴いながら静かに消えていきます。</li>
+<li><strong>長い余韻と芯のある打音</strong> — 触れた音は長く美しい余韻を引きます。鳴り始めには、マレットで「コン…」と叩いたような芯がほんの一瞬だけ混じります。</li>
+<li><strong>濃密なうねり</strong> — わずかに高さをずらした複数の低音が重なり、「ぶわんぶわん」「シュワシュワ」とした空気のうねりを生みます。ヘッドホンだと左右に広がって感じられます。</li>
+<li><strong>TONE の BASS で重低音を追い込む</strong> — TONE の BASS を上げるほど低音が増します。<strong>上げすぎると音が割れて「バリバリ」とノイズになります。</strong>割れる手前のいちばん豊かに鳴る一点（スイートスポット）を、BASS をゆっくり動かしながら探してください。</li>
+</ul>
+<p class="note">※ この超低音は小さなスピーカーやスマホの内蔵スピーカーではほとんど鳴りません。<strong>ヘッドホンやサブウーファーのある環境を強くおすすめします。</strong>低音を限界まで追い込んでいるぶん音割れしやすいので、音量は控えめから始めてください。</p>
 <h2>ノイズ3モードの使い方と効用</h2>
-<p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。モードを選んで CRUISE の START を押すと、途切れない音の層（ノイズベッド）が流れ続ける。NOISE TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
+<p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。モードを選んで CRUISE の START を押すと、途切れない音の層（ノイズベッド）が流れ続ける。TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
 <ul>
 <li><strong>WHITE（ホワイト）</strong> — 全周波数を均等に含む「シャー」。集中と、外の物音の遮断に。慣れると眠りにも。刺さると感じたら TREBLE を下げて。</li>
 <li><strong>PINK（ピンク）</strong> — 低い方へ傾いた「ザー」。雨や滝のような自然な厚み。ホワイトより柔らかく、集中・遮断・睡眠に。</li>
@@ -885,6 +897,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v015", "BOWL grows into a heavy-bass sound bath. Touch the water and a sub-bass drone swells in, holds for about ten seconds, then fades over another ten with a slow wavering. Each touch rings with a long tail and a mallet-like core, while detuning and an LFO create a dense undulation. TONE (formerly NOISE TONE) becomes a three-band EQ shared by every mode, always visible, so BASS can push the low end right up to the edge of distortion. BOWL's range drops, the water ripples deeper and longer, and its palette shifts to deep indigo, emerald and gold. Headphones recommended."],
       ["v014", "Rewrote the “how to play” section in the ripple-garden tab to match the current build: the NORMAL/NOISE switch, the player-style CRUISE (play, stop, repeat, shuffle, next, TIME, VOLUME), the mode-linked HARMONY / NOISE TONE, the low-power WATER toggle, and theme/language. About sirop now carries, in brief, the idea behind it all — an “external-memory OS” that sows information like seeds and grows it with AI, and turning knowledge into little worlds you can touch."],
       ["v013", "Finishing touches. The full history view gains a “show recent only” toggle, so you can collapse it back to five. The journal and ripple-garden readers now fade harder at top and bottom, so text vanishes completely just before the header and footer. Updated the first-implementation credit in the about section."],
       ["v012", "Polish and fixes. Fixed a bug where the confirm dialog kept popping up every time the mode auto-switched during cruise + shuffle (it now asks only when crossing the NORMAL↔NOISE boundary, never on in-group changes or automatic shuffles). GLASS is toned down a touch further. The full history view now scrolls inside its card, so it can no longer overflow off-screen and trap you with no way to close it. And the journal and ripple-garden readers now fade softly at top and bottom, so the text no longer collides with the header and footer."],
@@ -929,13 +942,23 @@ const I18N = {
 <li>Hold space and move the pointer — bowing: an arpeggio walks along your movement.</li>
 <li>MODE — switch between NORMAL and NOISE, then pick from each list. NORMAL has ten voices (CALM / GLASS / STORM / RESONANCE / ZEN / BOWL plus xylophone and glockenspiel, hard & yarn mallets); NOISE has white / pink / brown.</li>
 <li>CRUISE — a self-playing transport: ▶ play, ■ stop, repeat (∞ loop), shuffle, a “next” button beside it, plus TIME (5–120 min) and VOLUME. Leave it on like an ambient video.</li>
-<li>HARMONY / NOISE TONE — these swap with the mode. In NORMAL, HARMONY picks a classic progression (royal road, canon, 50s…); ASSIST ON optimises everything — even reflections — toward pleasant chords, OFF lets a little friction in, SUSTAIN for long tones. In NOISE, NOISE TONE shapes the bass / mid / treble.</li>
+<li>HARMONY — the chord progression in NORMAL (royal road, canon, 50s…). ASSIST ON optimises everything — even reflections — toward pleasant chords, OFF lets a little friction in; SUSTAIN for long tones.</li>
+<li>TONE — a three-band bass / mid / treble shaper, always visible. In NORMAL it shapes the whole sound, in NOISE the sustained noise. BASS in particular is the key to dialing in BOWL's deep low end.</li>
 <li>WATER — a toggle for the moving surface. Turn it OFF for a low-power mode that stops the visuals plus reflections, interference and shimmer (the sound keeps playing) — handy on the go or to save battery. LIFE / SPEED / REFLECT tune the water.</li>
 <li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends. CLEAR resets the surface.</li>
 <li>Theme / language — at the bottom in PREFS: light, dark, system, and 日本語 / English / Français.</li>
 </ul>
+<h2>BOWL — bass you feel in your body</h2>
+<p>BOWL aims at a heavy-bass sound bath, like an alchemy crystal singing bowl. Knowing each piece lets you sink in deeper.</p>
+<ul>
+<li><strong>A sub-bass swells when you touch</strong> — the moment you touch the water, a low drone fades in and turns rich within about half a second. It holds for roughly ten seconds, then fades away over another ten with a slow, wavering shimmer.</li>
+<li><strong>Long tails with a core</strong> — each touch rings with a long, beautiful tail, and a faint mallet-like "tok" gives the onset a pleasant core.</li>
+<li><strong>Dense undulation</strong> — several slightly detuned low tones overlap into a "wobble" of moving air; on headphones it spreads left and right.</li>
+<li><strong>Dial in the low end with TONE BASS</strong> — raising TONE's BASS adds weight. <strong>Push it too far and the sound breaks up into a crackly distortion.</strong> Move BASS slowly to find the single richest point just before it breaks — its sweet spot.</li>
+</ul>
+<p class="note">※ This sub-bass barely sounds on small or phone speakers. <strong>Headphones or a subwoofer are strongly recommended.</strong> Because the low end is pushed to its limit it distorts easily, so start at a low volume.</p>
 <h2>the three noise modes — use &amp; benefits</h2>
-<p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Select one and press START in CRUISE: an unbroken layer of sound (the noise bed) keeps flowing. Shape it to your night with the NOISE TONE bass / mid / treble knobs.</p>
+<p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Select one and press START in CRUISE: an unbroken layer of sound (the noise bed) keeps flowing. Shape it to your night with the TONE bass / mid / treble knobs.</p>
 <ul>
 <li><strong>WHITE</strong> — an even “shhh” across all frequencies. For focus and masking outside noise; for sleep once you're used to it. If it feels sharp, lower TREBLE.</li>
 <li><strong>PINK</strong> — a softer “shhh” tilted toward the lows, like rain or a waterfall. Gentler than white, for focus, masking and sleep.</li>
@@ -960,6 +983,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v015", "BOWL devient un bain sonore très grave. Touchez l'eau et un drone sub-grave s'installe, tient une dizaine de secondes, puis s'efface sur dix autres avec une lente ondulation. Chaque toucher résonne d'une longue traîne et d'un cœur de mailloche, tandis que désaccord et LFO créent une ondulation dense. TONE (ex-NOISE TONE) devient un égaliseur trois bandes commun à tous les modes, toujours visible, pour que le BASS pousse les graves juste au bord de la distorsion. La tessiture de BOWL descend, l'eau ondule plus profond et plus longtemps, et sa palette vire au bleu indigo profond, émeraude et or. Casque recommandé."],
       ["v014", "Réécriture de la section « comment jouer » de l'onglet ripple-garden pour coller à la version actuelle : la bascule NORMAL/NOISE, la CROISIÈRE de type lecteur (lecture, arrêt, répétition, aléatoire, suivant, TIME, VOLUME), HARMONY / NOISE TONE liés au mode, l'interrupteur WATER basse consommation, et thème/langue. À propos de sirop porte désormais, en bref, l'idée derrière tout cela — un « OS de mémoire externe » qui sème l'information comme des graines et la cultive avec l'IA, et transforme le savoir en petits mondes que l'on touche."],
       ["v013", "Touches de finition. L'historique complet reçoit une bascule « afficher les récents » pour le replier à cinq entrées. Les lecteurs journal et ripple-garden s'estompent plus nettement en haut et en bas, le texte disparaissant complètement juste avant l'en-tête et le pied de page. Crédit de première implémentation mis à jour dans la section about."],
       ["v012", "Peaufinage et corrections. Correction d'un bug où la boîte de confirmation réapparaissait chaque fois que le mode changeait automatiquement pendant croisière + aléatoire (elle ne demande plus qu'au passage de la frontière NORMAL↔NOISE, jamais lors des changements internes ou aléatoires). GLASS est encore légèrement adouci. L'historique complet défile désormais dans sa carte et ne peut plus déborder hors de l'écran en empêchant la fermeture. Enfin, les lecteurs journal et ripple-garden s'estompent doucement en haut et en bas, pour que le texte ne chevauche plus l'en-tête ni le pied de page."],
@@ -1004,13 +1028,23 @@ const I18N = {
 <li>Espace maintenu + déplacement — l'archet : un arpège marche le long de votre geste.</li>
 <li>MODE — basculez entre NORMAL et NOISE, puis choisissez dans chaque liste. NORMAL compte dix voix (CALM / GLASS / STORM / RESONANCE / ZEN / BOWL plus xylophone et glockenspiel, mailloches dures et en laine) ; NOISE propose blanc / rose / brun.</li>
 <li>CRUISE — un lecteur automatique : ▶ lecture, ■ arrêt, répétition (boucle ∞), aléatoire, un bouton « suivant » à côté, plus TIME (5–120 min) et VOLUME. À laisser tourner comme une vidéo ambiante.</li>
-<li>HARMONY / NOISE TONE — s'échangent selon le mode. En NORMAL, HARMONY choisit une progression classique (route royale, canon, années 50…) ; ASSIST ON optimise tout — même les réflexions — vers des accords agréables, OFF laisse entrer un peu de friction, SUSTAIN pour les notes longues. En NOISE, NOISE TONE règle grave / médium / aigu.</li>
+<li>HARMONY — la progression d'accords en NORMAL (route royale, canon, années 50…). ASSIST ON optimise tout — même les réflexions — vers des accords agréables, OFF laisse entrer un peu de friction ; SUSTAIN pour les notes longues.</li>
+<li>TONE — un égaliseur trois bandes grave / médium / aigu, toujours visible. En NORMAL il façonne tout le son, en NOISE le bruit continu. Le BASS (grave) est surtout la clé pour régler les basses profondes de BOWL.</li>
 <li>WATER — un interrupteur pour la surface animée. OFF active un mode basse consommation qui coupe le visuel ainsi que réflexions, interférences et scintillement (le son continue) — pratique en déplacement ou pour la batterie. LIFE / SPEED / REFLECT ajustent l'eau.</li>
 <li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO. CLEAR réinitialise la surface.</li>
 <li>Thème / langue — en bas dans PREFS : clair, sombre, système, et 日本語 / English / Français.</li>
 </ul>
+<h2>BOWL — des basses que l'on ressent dans le corps</h2>
+<p>BOWL vise un bain sonore très grave, comme un bol de cristal d'alchimie. Comprendre chaque élément permet de s'y enfoncer davantage.</p>
+<ul>
+<li><strong>Un sub-grave monte au toucher</strong> — dès que vous touchez l'eau, un drone grave s'installe en fondu et devient riche en une demi-seconde environ. Il tient une dizaine de secondes, puis disparaît sur dix autres avec un lent scintillement ondoyant.</li>
+<li><strong>De longues traînes avec un cœur</strong> — chaque toucher résonne d'une longue et belle traîne, et un léger « toc » de mailloche donne à l'attaque un cœur agréable.</li>
+<li><strong>Une ondulation dense</strong> — plusieurs sons graves légèrement désaccordés se superposent en un « wobble » d'air en mouvement ; au casque, il s'étend de gauche à droite.</li>
+<li><strong>Réglez les graves avec TONE BASS</strong> — monter le BASS de TONE ajoute du poids. <strong>Trop loin, le son se brise en une distorsion grésillante.</strong> Déplacez BASS lentement pour trouver le point le plus riche juste avant la cassure — son point idéal.</li>
+</ul>
+<p class="note">※ Ce sub-grave ne sort presque pas sur de petits haut-parleurs ou ceux d'un téléphone. <strong>Un casque ou un caisson de basses est fortement recommandé.</strong> Comme les basses sont poussées à leur limite, le son se déforme facilement ; commencez à faible volume.</p>
 <h2>les trois modes de bruit — usage &amp; bienfaits</h2>
-<p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un et appuyez sur START en CROISIÈRE : une couche de son ininterrompue (la nappe de bruit) continue de couler. Façonnez-la à votre nuit avec les réglages NOISE TONE grave / médium / aigu.</p>
+<p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un et appuyez sur START en CROISIÈRE : une couche de son ininterrompue (la nappe de bruit) continue de couler. Façonnez-la à votre nuit avec les réglages TONE grave / médium / aigu.</p>
 <ul>
 <li><strong>WHITE (blanc)</strong> — un « chhh » égal sur toutes les fréquences. Pour la concentration et masquer les bruits extérieurs ; pour le sommeil une fois habitué. S'il semble trop vif, baissez TREBLE.</li>
 <li><strong>PINK (rose)</strong> — un « chhh » plus doux incliné vers les graves, comme la pluie. Plus doux que le blanc, pour la concentration, le masquage et le sommeil.</li>
@@ -1036,8 +1070,9 @@ const state = {
   tab: "garden",
   lang: "ja", theme: "system",
   cruiseMin: 30,
-  // NOISE TONE: 持続ノイズベッドの3バンドつまみ（単位 dB）。低=体・中=厚み・高=シャー
+  // TONE: モード別の3バンドEQ（単位 dB）。NOISE=持続ベッド用 / NORMAL=通常&BOWL声部用（重低音の追い込み）
   noiseBass: 4, noiseMid: 0, noiseTreble: -3,
+  toneBass: 0, toneMid: 0, toneTreble: 0,
   _volBeforeNoise: null, // 通常音→ノイズで音量を絞る前の値（戻すとき用）
   _shuffleBeforeNoise: null, // NOISEへ入る前のSHUFFLE状態（NORMAL復帰時に戻す）
   autoCleanMin: 120, // 長時間運用で蓄積を掃除する自動クリーンアップ間隔（分）。0で無効
@@ -1379,6 +1414,7 @@ function updateRipples(dtMs, now){
 /* ---------- 8. サウンドエンジン ---------- */
 const audio = (() => {
   let ctx = null, master = null, limiter = null, dry = null, verb = null, wet = null;
+  let toneLow = null, toneMid = null, toneHigh = null; // 共通TONE EQ（NORMAL/BOWL声部用）
   let recNode = null, noiseBuf = null, brownBuf = null, pinkBuf = null;
   let voices = 0; const MAXV = 40;
   let lastInter = 0;
@@ -1386,6 +1422,8 @@ const audio = (() => {
   // 持続ノイズベッド（CRUISE中にノイズモードで鳴る連続ドローン）
   let bedLow = null, bedMid = null, bedHigh = null, bedGain = null;
   let bedSrcs = [], bedSub = null, bedColor = null;
+  // BOWL超低音ドローン（打鍵トリガーで立ち上がる持続低音。同時数を制限して低音飽和を防ぐ）
+  let bowlDrones = []; const BOWL_DRONE_MAX = 3;
   // 色ごとの基準音量（素材バッファのRMSが色で大きく違うため補正）。つまみと音量で微調整可
   const BED_LEVEL = { white: .42, pink: 1.5, brown: .7 };
 
@@ -1406,9 +1444,16 @@ const audio = (() => {
       verb = ctx.createConvolver(); verb.buffer = makeIR(3.6, 2.4);
       wet = ctx.createGain(); wet.gain.value = .9;
 
-      dry.connect(master);
+      // NORMAL/BOWL声部用の共通TONE EQ（3バンド）。dry を必ずこのEQに通してから master へ。
+      // これで BOWL の重低音を音割れ寸前まで TONE BASS で追い込める。ノイズベッドは別系統(bedEQ)でmaster直結。
+      toneLow  = ctx.createBiquadFilter(); toneLow.type  = "lowshelf";  toneLow.frequency.value  = 120;
+      toneMid  = ctx.createBiquadFilter(); toneMid.type  = "peaking";   toneMid.frequency.value  = 1000; toneMid.Q.value = .8;
+      toneHigh = ctx.createBiquadFilter(); toneHigh.type = "highshelf"; toneHigh.frequency.value = 3500;
+      dry.connect(toneLow); toneLow.connect(toneMid); toneMid.connect(toneHigh); toneHigh.connect(master);
+
       verb.connect(wet); wet.connect(master);
       master.connect(limiter); limiter.connect(ctx.destination);
+      toneSetEQ();
 
       // ホワイトノイズ（飛沫・反射・持続ベッド）とブラウンノイズ（グラスボウル）の素材
       // ベッドで連続ループするため3秒に延ばし、ループの周期感を目立ちにくくする
@@ -1442,7 +1487,7 @@ const audio = (() => {
       bedHigh = ctx.createBiquadFilter(); bedHigh.type = "highshelf"; bedHigh.frequency.value = 3500;
       bedGain = ctx.createGain(); bedGain.gain.value = .0001;
       bedLow.connect(bedMid); bedMid.connect(bedHigh); bedHigh.connect(bedGain);
-      bedGain.connect(dry);
+      bedGain.connect(master); // ベッドは共通TONE EQを通さず master 直結（NOISE TONE二重がけ回避）
       noiseBedSetEQ();
 
       setupRecorderTap();
@@ -1537,6 +1582,70 @@ const audio = (() => {
     }
     const g = envGain(out, .05 * strength, .005, .8, t);
     osc("sine", f, t, t + 1.2).connect(g);
+    // 芯（マレットの「コン…」）: ごく短い帯域ノイズのアタックで打音に心地よい芯を作る
+    const mg = envGain(out, .06 * strength, .001, .05, t);
+    const ms = ctx.createBufferSource(); ms.buffer = noiseBuf;
+    const mbp = ctx.createBiquadFilter();
+    mbp.type = "bandpass"; mbp.frequency.value = Math.min(2600, f * 6); mbp.Q.value = 1.2;
+    ms.connect(mbp); mbp.connect(mg);
+    ms.start(t); ms.stop(t + .12);
+  }
+
+  /* BOWL超低音ドローン: 打鍵でふわりと立ち上がり（0.5s）、約10秒リッチに持続し、
+     約10秒かけてゆっくりしたビブラートを伴い減衰する。デチューンした複数sineのうねり
+     ＋LFOでローパスのカットオフを揺らした濃密な空気感。同時数を制限して低音飽和と
+     クリッピングを防ぐ（最古をクロスフェードで押し出す）。 */
+  function bowlDroneVoice(out, f, strength, t){
+    if (!ctx) return;
+    while (bowlDrones.length >= BOWL_DRONE_MAX){
+      const old = bowlDrones.shift();
+      try { old.release(ctx.currentTime, 1.5); } catch(e){}
+    }
+    const base = Math.max(28, f * 0.5); // 1オクターブ下の超低音（28Hz下限でサブソニック保護）
+    const g = ctx.createGain(); g.gain.value = 0;
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 22; // DC/サブソニック除去
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 300; lp.Q.value = .6;
+    // うねり用LFO（ぶわんぶわん）: カットオフをゆっくり揺らす
+    const lfo = ctx.createOscillator(); lfo.type = "sine"; lfo.frequency.value = .16;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 95;
+    lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start(t);
+    g.connect(hp); hp.connect(lp); lp.connect(out);
+    // デチューンした複数オシレータ（うねり＝バイノーラル風ビート）
+    const oscs = [];
+    const def = [[1, .9, -3.5], [1, .9, 3.5], [2, .32, 0], [0.5, .45, 0]]; // [周波数比, 音量, デチューンcent]
+    for (const [mul, vol, cent] of def){
+      const o = ctx.createOscillator(); o.type = "sine";
+      o.frequency.value = base * mul; o.detune.value = cent;
+      const og = ctx.createGain(); og.gain.value = vol;
+      o.connect(og); og.connect(g);
+      o.start(t); oscs.push(o);
+    }
+    // ゆっくりビブラート（減衰期に効く揺らぎ）: 全oscのdetuneを薄く揺らす
+    const vib = ctx.createOscillator(); vib.type = "sine"; vib.frequency.value = .11;
+    const vibG = ctx.createGain(); vibG.gain.value = 7; // ±7cent
+    vib.connect(vibG); oscs.forEach(o => vibG.connect(o.detune)); vib.start(t);
+    // a案エンベロープ: 0.5s立ち上がり → 約10s持続 → 約10s減衰
+    const peak = Math.min(.2, .12 * strength + .055);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.5);
+    g.gain.setValueAtTime(peak, t + 10.5);
+    g.gain.linearRampToValueAtTime(.0001, t + 20.5);
+    const stopAt = t + 21;
+    const allOsc = [...oscs, lfo, vib];
+    allOsc.forEach(o => o.stop(stopAt));
+    const rec = {
+      release(now, sec){
+        try{
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(Math.max(.0001, g.gain.value), now);
+          g.gain.linearRampToValueAtTime(.0001, now + sec);
+          const s = now + sec + .1;
+          allOsc.forEach(o => { try { o.stop(s); } catch(e){} });
+        }catch(e){}
+      }
+    };
+    bowlDrones.push(rec);
+    setTimeout(() => { const i = bowlDrones.indexOf(rec); if (i >= 0) bowlDrones.splice(i, 1); }, 21500);
   }
 
   /* ノイズ声部: 色付きノイズ → 共鳴フィルタ = 音程を持つ風 */
@@ -1574,6 +1683,15 @@ const audio = (() => {
     bedLow.gain.setTargetAtTime(state.noiseBass, now, .05);
     bedMid.gain.setTargetAtTime(state.noiseMid, now, .05);
     bedHigh.gain.setTargetAtTime(state.noiseTreble, now, .05);
+  }
+
+  /* 共通TONE EQ（NORMAL/BOWL声部）。BOWLの重低音をBASSで追い込むときの主役 */
+  function toneSetEQ(){
+    if (!toneLow) return;
+    const now = ctx.currentTime;
+    toneLow.gain.setTargetAtTime(state.toneBass, now, .05);
+    toneMid.gain.setTargetAtTime(state.toneMid, now, .05);
+    toneHigh.gain.setTargetAtTime(state.toneTreble, now, .05);
   }
 
   function noiseBedClearSrcs(delay){
@@ -1648,8 +1766,10 @@ const audio = (() => {
     let decay = m.decay * (tw.decay || 1) * (0.75 + Math.random() * .5) * Math.min(state.life, 1.6);
     if (light) decay *= .45;
     if (state.sustain) decay *= 2.6; // SUSTAIN: ロングトーン
-    // voiceOut には decay を渡して発音終了後にノードを解放させる（decay 確定後に呼ぶ）
-    const out = voiceOut(pan, m.send * (tw.send || 1) * (light ? .7 : 1), decay + 1);
+    // voiceOut には発音寿命を渡して終了後にノードを解放させる。
+    // BOWLのドローンは約21秒鳴るため、通常打音のdecay基準で接続が先に切れないよう寿命を確保する。
+    const voiceLife = (m.voice === "bowl" && !light) ? Math.max(decay + 1, 22) : decay + 1;
+    const out = voiceOut(pan, m.send * (tw.send || 1) * (light ? .7 : 1), voiceLife);
     const atk = m.atkOver || tw.atk || .004;
 
     // ローファイ等: 声部全体を柔らかくするローパス
@@ -1662,6 +1782,7 @@ const audio = (() => {
 
     if (m.voice === "bowl" && !light){
       bowlVoice(tapOut, f, strength, decay, t, m);
+      bowlDroneVoice(tapOut, f, strength, t); // お腹に響く超低音ドローン（打鍵トリガー）
     } else if (m.voice === "noise" && !light){
       noiseVoice(tapOut, f, strength, decay, t, m);
     } else {
@@ -1784,17 +1905,18 @@ const audio = (() => {
   function setVolume(v){ if (master) fadeTo(v, .12); }
   function sampleRate(){ return ctx ? ctx.sampleRate : 44100; }
   function running(){ return !!ctx && ctx.state === "running"; }
-  function sounding(){ return running() && (voices > 0 || bedSrcs.length > 0); }
+  function sounding(){ return running() && (voices > 0 || bedSrcs.length > 0 || bowlDrones.length > 0); }
 
   /* ページ離脱時の保険: 持続ベッドを止め、AudioContextを停止して音を残さない。
      （通常タブを閉じれば破棄されるが、bfcache等で残るケースへの備え） */
   function teardown(){
     try { noiseBedStop(0); } catch(e){}
+    try { const now = ctx ? ctx.currentTime : 0; bowlDrones.forEach(d => { try { d.release(now, .3); } catch(e){} }); bowlDrones = []; } catch(e){}
     try { if (ctx && ctx.state === "running") ctx.suspend(); } catch(e){}
   }
 
   return { ensure, tap, reflect, interfere, setVolume, sampleRate, fadeTo,
-           noiseBedSetEQ, syncNoiseBed, teardown, running, sounding };
+           noiseBedSetEQ, toneSetEQ, syncNoiseBed, teardown, running, sounding };
 })();
 
 // ページを閉じる / 離脱するときに音を確実に止める
@@ -1996,6 +2118,9 @@ const ui = (() => {
   // v011 パネルv2: モード連動セクション / CRUISEトランスポート / WATER(ECO)トグル
   const harmonySec = document.getElementById("harmonySec");
   const noiseToneSec = document.getElementById("noiseToneSec");
+  const sToneBass = document.getElementById("sNoiseBass");
+  const sToneMid  = document.getElementById("sNoiseMid");
+  const sToneHigh = document.getElementById("sNoiseHigh");
   const btnNext = document.getElementById("btnNext");
   const btnRepeat = document.getElementById("btnRepeat");
   const btnShuffle = document.getElementById("btnShuffle");
@@ -2038,9 +2163,13 @@ const ui = (() => {
     selNoiseMode.disabled = !isNoise;
     selNormalMode.value = String(lastNormalMode);
     selNoiseMode.value = String(lastNoiseMode);
-    // ②④ モード連動: NORMAL=HARMONY表示 / NOISE=NOISE TONE表示
+    // HARMONY(コード進行)はNORMALのみ。TONEは常時表示し、中身をモードで切り替える。
     harmonySec.hidden = isNoise;
-    noiseToneSec.hidden = !isNoise;
+    noiseToneSec.hidden = false;
+    // TONEスライダーの値を現モードのEQ値へ同期（NOISE=持続ベッド用 / NORMAL=通常&BOWL声部用）
+    sToneBass.value = isNoise ? state.noiseBass : state.toneBass;
+    sToneMid.value  = isNoise ? state.noiseMid  : state.toneMid;
+    sToneHigh.value = isNoise ? state.noiseTreble : state.toneTreble;
   }
 
   function updateShuffleUI(){
@@ -2170,10 +2299,17 @@ const ui = (() => {
   bind("sSpeed", "speed");
   bind("sReflect", "reflect");
   bind("sVolume", "volume", v => { if (!cruise.stopping && !fadeClear.active) audio.setVolume(v); });
-  // NOISE TONE: 持続ノイズベッドの3バンドつまみ
-  bind("sNoiseBass", "noiseBass", () => audio.noiseBedSetEQ());
-  bind("sNoiseMid", "noiseMid", () => audio.noiseBedSetEQ());
-  bind("sNoiseHigh", "noiseTreble", () => audio.noiseBedSetEQ());
+  // TONE: 同じUIで対象をモード別に切替（NOISE=持続ベッドEQ / NORMAL=共通EQでBOWLの重低音を追い込む）
+  const bindTone = (el, noiseKey, toneKey) => {
+    el.addEventListener("input", () => {
+      const v = parseFloat(el.value);
+      if (mode().voice === "noise"){ state[noiseKey] = v; audio.noiseBedSetEQ(); }
+      else { state[toneKey] = v; audio.toneSetEQ(); }
+    });
+  };
+  bindTone(sToneBass, "noiseBass", "toneBass");
+  bindTone(sToneMid,  "noiseMid",  "toneMid");
+  bindTone(sToneHigh, "noiseTreble", "toneTreble");
 
   /* --- クルーズ（③ プレイヤー型トランスポート: ▶/■・次・リピート・シャッフル） --- */
   const sCruise = document.getElementById("sCruise");
