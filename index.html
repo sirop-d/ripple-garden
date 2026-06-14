@@ -3,10 +3,15 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v011
+  @version v012
   担当AI名: Claude / クー
 
   更新履歴:
+  - v012_20260614_195529: バグ修正と仕上げ。①クルーズ＋シャッフル中にモード境界で確認窓が
+    繰り返し出る不具合を修正（NORMAL↔NOISEの境界だけ確認し、グループ内＝シャッフルの自動切替では出さない）/
+    ②GLASSの音量を60%へ微調整（bellMix .7→.6）/ ③更新履歴の全件表示をカード内スクロール可に
+    （上下に見切れて閉じられない不具合を修正）/ ④journal・ripple-gardenの読み物を上下フェードにし
+    ヘッダー・フッターと本文が重ならないよう調整。
   - v011_20260614_014211: パネルv2＋低電力＋小調整。①ripple-gardenタブに自作曲(SUNO)の
     おまけコーナーを3言語で追加 / ②④HARMONY⇄NOISE TONEをモード連動表示（NORMAL=HARMONY /
     NOISE=NOISE TONE）/ ③CRUISEをHARMONY上へ移動しプレイヤー化（▶⇄■・次の曲・REPEAT・SHUFFLE
@@ -17,8 +22,6 @@
     NORMAL↔NOISEの境界を音が鳴っている時だけ確認し、NOISE中はSHUFFLEを自動OFF・無効化、
     通常音へ戻ると直前状態を復元 / iPhoneのメニュー下端までスクロール可能にするdvh・safe-area対応 /
     ノイズモード中の音程付き反射音を停止。
-  - v009_20260613_173751: 長時間運用の安定化。発音が終わった声部のノードを残響後に解放し
-    dryへの蓄積（フリーズ一因）を防止 / 既定120分ごとに自動クリーンアップ（フェードで聴感を切らず掃除）。
 -->
 <html lang="ja">
 <head>
@@ -330,6 +333,8 @@
   #verModal[hidden], #modeConfirm[hidden]{ display:none; }
   .vm-card{
     width:min(420px, calc(100vw - 48px));
+    max-height:calc(100vh - 48px); max-height:calc(100dvh - 48px);
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
     background:var(--panel-bg); border:1px solid var(--hairline);
     -webkit-backdrop-filter:blur(22px); backdrop-filter:blur(22px);
     padding:28px 26px 22px; color:var(--ink);
@@ -375,13 +380,22 @@
 
   /* ---------- 読み物オーバーレイ（journal / about） ---------- */
   .reader{
-    position:fixed; inset:0; z-index:15; overflow-y:auto;
+    position:fixed; inset:0; z-index:15;
     background:var(--reader-bg);
     -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px);
-    padding:112px 26px 90px;
     -webkit-user-select:text; user-select:text;
   }
   .reader[hidden]{ display:none; }
+  /* スクロールは内側のラッパーで行い、上下端をフェードして
+     ヘッダー（タブ）・フッター（by sirop）と本文が重ならないようにする。
+     mask は要素ボックス基準＝画面上で固定なので、スクロールしても帯位置は動かない。 */
+  .reader-scroll{
+    position:absolute; inset:0; overflow-y:auto;
+    padding:112px 26px 90px;
+    -webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 96px, #000 calc(100% - 74px), transparent 100%);
+    mask-image:linear-gradient(to bottom, transparent 0, #000 96px, #000 calc(100% - 74px), transparent 100%);
+  }
   .paper{ max-width:620px; margin:0 auto; }
   .paper h2{
     font-family:var(--serif); font-weight:400; font-size:17px;
@@ -416,7 +430,11 @@
     #cruiseBadge{ left:20px; bottom:38px; }
     #chordName{ right:18px; bottom:16px; font-size:12px; }
     #footerBtn{ bottom:14px; }
-    .reader{ padding:128px 20px 80px; }
+    .reader-scroll{
+      padding:128px 20px 80px;
+      -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 64px), transparent 100%);
+      mask-image:linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 64px), transparent 100%);
+    }
   }
 </style>
 </head>
@@ -514,8 +532,8 @@
   </div>
 </aside>
 
-<section class="reader" id="readerJournal" hidden><div class="paper" id="artJournal"></div></section>
-<section class="reader" id="readerAbout" hidden><div class="paper" id="artAbout"></div></section>
+<section class="reader" id="readerJournal" hidden><div class="reader-scroll"><div class="paper" id="artJournal"></div></div></section>
+<section class="reader" id="readerAbout" hidden><div class="reader-scroll"><div class="paper" id="artAbout"></div></div></section>
 
 <div id="recBadge">REC 00:00</div>
 <div id="cruiseBadge">CRUISE</div>
@@ -562,7 +580,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v011";
+const VERSION = "v012";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
 const VERSION_DATE = "2026.06.14";
 
@@ -582,7 +600,7 @@ const MODES = [
   { id:"glass", name:"GLASS", jp:"硝子",
     c2:.30, sub:1, k:.0020, amp:1.25, octShift:12, voice:"bell",
     root:76, scale:[0,2,4,7,9],
-    partials:[[1,1],[2.756,.32],[5.404,.1]], bellMix:.7, dropMix:.2, splash:0,
+    partials:[[1,1],[2.756,.32],[5.404,.1]], bellMix:.6, dropMix:.2, splash:0,
     decay:3.4, send:.32, interGain:1.2, jitter:2, shimmer:.008, reflGain:.8,
     heightGain:130, shadeGain:210,
     base:[5,9,14], crest:[150,200,228], trough:[14,28,50], lbase:[216,229,237] },
@@ -795,6 +813,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v012", "細部の調整と不具合修正。クルーズ＋シャッフル中、モードが自動で入れ替わるたびに確認ダイアログが繰り返し出てしまう不具合を修正（NORMAL↔NOISEの境界を越える時だけ確認し、グループ内の切替や自動シャッフルでは出さない）。GLASSの音量をさらに控えめに微調整。更新履歴の全件表示をカード内でスクロールできるようにして、上下に見切れて閉じられなくなる不具合を解消。journalとripple-gardenの読み物は上下がやわらかくフェードし、ヘッダー・フッターと本文が重ならないよう整えた。"],
       ["v011", "パネルを刷新。CRUISEをプレイヤー化（▶⇄■・次の曲・リピート・シャッフルのアイコン、VOLUMEを同居）し、HARMONYとNOISE TONEをモードに連動して入れ替え表示。WATERをトグルにして低電力モード（OFFで動的グラフィックと反射・干渉・きらめきを止め、音は継続）。GLASSの音量を控えめに調整し、ripple-gardenタブにこの庭から生まれた自作曲のおまけを追加。"],
       ["v010", "MODEをNORMAL / NOISEの2グループとドロップダウンへ再編。音が鳴っている時だけグループ境界の切替を確認し、NOISE中はSHUFFLEを自動で止めて無効化、NORMALへ戻ると直前状態を復元。iPhoneメニューの下端スクロールとsafe-areaに対応し、ノイズ中の音程付き反射音も停止。"],
       ["v009", "長時間運用の安定化。発音が終わった声部のオーディオノードをリバーブ残響ぶん待ってから解放し、長時間でページが重く・固まる一因（ノードの蓄積）を防止。さらに既定120分ごとに自動クリーンアップを実行し、フェードアウト→掃除→フェードインで聴感を途切れさせず波面と波紋をリセット。"],
@@ -863,6 +882,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v012", "Polish and fixes. Fixed a bug where the confirm dialog kept popping up every time the mode auto-switched during cruise + shuffle (it now asks only when crossing the NORMAL↔NOISE boundary, never on in-group changes or automatic shuffles). GLASS is toned down a touch further. The full history view now scrolls inside its card, so it can no longer overflow off-screen and trap you with no way to close it. And the journal and ripple-garden readers now fade softly at top and bottom, so the text no longer collides with the header and footer."],
       ["v011", "Panel overhaul. CRUISE becomes a player (play⇄stop, next, repeat, shuffle icons, with VOLUME alongside); HARMONY and NOISE TONE swap by mode. WATER is now a toggle that doubles as a low-power mode (off stops the visuals plus reflections, interference and shimmer while the sound keeps playing). GLASS is toned down, and the ripple-garden tab gains a bonus track born from this garden."],
       ["v010", "MODE is now split into NORMAL / NOISE groups with compact dropdowns. Crossing the boundary asks only while sound is active; NOISE automatically pauses and disables SHUFFLE, then restores its previous state on return to NORMAL. The iPhone menu now reaches its safe-area bottom, and pitched reflections stay silent in noise modes."],
       ["v009", "Long-session stability. Finished voices now release their audio nodes (after the reverb tail) instead of piling up on the output — a likely cause of the page slowing or freezing over hours. And every 120 minutes by default a quiet auto-cleanup runs: fade out, sweep the wave field and ripples, fade back in, so it resets without breaking the sound."],
@@ -931,6 +951,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v012", "Peaufinage et corrections. Correction d'un bug où la boîte de confirmation réapparaissait chaque fois que le mode changeait automatiquement pendant croisière + aléatoire (elle ne demande plus qu'au passage de la frontière NORMAL↔NOISE, jamais lors des changements internes ou aléatoires). GLASS est encore légèrement adouci. L'historique complet défile désormais dans sa carte et ne peut plus déborder hors de l'écran en empêchant la fermeture. Enfin, les lecteurs journal et ripple-garden s'estompent doucement en haut et en bas, pour que le texte ne chevauche plus l'en-tête ni le pied de page."],
       ["v011", "Refonte du panneau. CRUISE devient un lecteur (icônes lecture⇄arrêt, suivant, répéter, aléatoire, avec le VOLUME à côté) ; HARMONY et NOISE TONE s'échangent selon le mode. WATER est désormais un interrupteur qui sert aussi de mode basse consommation (off coupe le visuel ainsi que réflexions, interférences et scintillement, le son continue). GLASS est adouci, et l'onglet ripple-garden gagne un morceau bonus né de ce jardin."],
       ["v010", "MODE est désormais séparé en groupes NORMAL / NOISE avec des listes compactes. Le passage de frontière ne demande confirmation que si un son joue ; NOISE coupe et désactive automatiquement SHUFFLE, puis restaure son état au retour vers NORMAL. Le menu iPhone atteint maintenant la zone sûre inférieure et les réflexions tonales restent muettes dans les modes de bruit."],
       ["v009", "Stabilité sur longue durée. Les voix terminées libèrent désormais leurs nœuds audio (après la traîne de réverbération) au lieu de s'accumuler sur la sortie — une cause probable du ralentissement ou du gel de la page après des heures. Et toutes les 120 minutes par défaut, un nettoyage discret s'exécute : fondu sortant, balayage du champ d'ondes et des ondulations, fondu entrant, pour réinitialiser sans casser le son."],
@@ -2050,7 +2071,9 @@ const ui = (() => {
 
   function setMode(i){
     const nextIdx = Math.max(0, Math.min(MODES.length - 1, i));
-    const crossing = MODES[state.modeIdx].voice !== MODES[nextIdx].voice;
+    // 確認は NORMAL(非noise) ↔ NOISE の境界を越える時だけ。
+    // bell↔bowl↔木琴…のグループ内切替（シャッフルの自動切替を含む）では出さない。
+    const crossing = (MODES[state.modeIdx].voice === "noise") !== (MODES[nextIdx].voice === "noise");
     if (crossing && (cruise.on || audio.sounding())){
       pendingMode = nextIdx;
       modeConfirmText.textContent = MODES[nextIdx].voice === "noise"
