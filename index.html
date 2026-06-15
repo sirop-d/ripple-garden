@@ -3,10 +3,15 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v015
+  @version v016
   担当AI名: Claude / クー
 
   更新履歴:
+  - v016_20260615_084009: BOWLを音浴（BATH）グループへ移動。①ノイズ3色＋BOWLを「音浴(BATH)」群に統一し、
+    NORMAL↔音浴は必ず確認・音量を一律10%へ・シャッフルはNORMALのみ（音浴は選ばない）/ ②「NOISE」を
+    「音浴（EN:BATH/FR:BAIN）」へ改名、BOWLを「BOWL — 低音浴」(3言語)に / ③aboutを再構成（最初に2モード概要と
+    音浴のサウンドマスキング効用→操作→音浴詳細）、BOWLは重低音抽出を強調 / journalにシンギングボウルの
+    落ち着き効果の研究まとめ（出典の信頼度に触れ断定回避・3言語）を追加。
   - v015_20260615_064450: BOWLモードを重低音サウンドバスへ進化。①触れると立ち上がる超低音ドローン
     （0.5s立ち上がり→約10s持続→約10s揺らぎ減衰、デチューン＋LFOのうねり）/ ②打音に長い余韻とマレットの芯 /
     ③TONEを全モード共通化（NORMAL用EQ新設・常時表示・「NOISE TONE」→「TONE」改名）でBOWLの重低音を
@@ -15,9 +20,6 @@
   - v014_20260615_031252: ripple-gardenタブの「使い方」を現行UI（NORMAL/NOISE切替・CRUISEプレイヤー・
     HARMONY⇄NOISE TONE連動・WATER低電力・PREFS）へ全面更新。about siropに、外部記憶OSと
     「触れる小宇宙」の考え方をコンパクトに1段落追記（3言語）。
-  - v013_20260615_024638: 細部の仕上げ。①更新履歴の全件表示に「簡易表示にもどる」トグルを追加（5件⇄全件を往復）/
-    ②読み物（journal・ripple-garden）の上下フェードを強め、ヘッダー・フッター直前で本文の不透明度が0になるよう調整 /
-    ④about内の初回実装クレジットを Claude Code → Claude Fable 5 (Ultracode) へ更新。③ライトモードのSUNOプレイヤー親和化はSUNO側がダーク固定・環境依存のため見送り。
 -->
 <html lang="ja">
 <head>
@@ -457,7 +459,7 @@
     <div class="sec-label">MODE</div>
     <div class="mode-segments" role="group" aria-label="mode group">
       <button id="modeNormal" class="active" type="button">NORMAL</button>
-      <button id="modeNoise" type="button">NOISE</button>
+      <button id="modeNoise" type="button">音浴</button>
     </div>
     <div class="sel-wrap mode-select" id="normalModeWrap">
       <select id="selNormalMode" aria-label="normal mode"></select>
@@ -576,7 +578,7 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v015";
+const VERSION = "v016";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
 const VERSION_DATE = "2026.06.15";
 
@@ -625,7 +627,8 @@ const MODES = [
     heightGain:90, shadeGain:160,
     base:[4,6,10], crest:[115,140,162], trough:[12,18,30], lbase:[221,225,229] },
 
-  { id:"bowl", name:"BOWL", jp:"鉢",
+  { id:"bowl", name:"BOWL", jp:"低音浴",
+    cap:{ ja:"低音浴", en:"Bass Bath", fr:"Bain de basses" },
     c2:.15, sub:1, k:.0007, amp:1.4, octShift:0, voice:"bowl", // k下げ=波がより長く深く残る
     root:44, scale:[0,2,4,7,9],                                 // 音域を下げ重心を低く（超低音はドローンが担う）
     partials:[[1,1],[2.32,.4],[4.25,.14]], // ガラス鉢の非整数倍音
@@ -804,6 +807,8 @@ const GENRES = [
 const I18N = {
   ja: {
     hint: "TOUCH THE WATER · 水面に触れてください",
+    modeNormalLabel: "NORMAL", modeBathLabel: "音浴",
+    confirmToBath: "音浴（BATH）モードに切り替えますか？", confirmFromBath: "音浴モードを終了しますか？（持続音が止まります）",
     themes: ["ライト", "ダーク", "システム"],
     close: "閉じる",
     histAll: "すべての更新履歴を見る",
@@ -811,6 +816,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v016", "BOWLを「音浴（BATH）」グループへ移動。これまでノイズ3色（ホワイト/ピンク/ブラウン）だった持続音の仲間に BOWL（低音浴）を加え、NORMAL とは性格の違う「音浴（BATH）」としてまとめた。NORMAL から音浴へ切り替えるときは必ず確認し、音量を一律で約10%に絞り、シャッフルは NORMAL の中だけで回る（音浴は選ばれない）。UIの「NOISE」表記を「音浴（英:BATH／仏:BAIN）」に改名し、BOWL は「BOWL — 低音浴」に。ripple-gardenタブを再構成し、最初に NORMAL と音浴の2モードと、音浴のサウンドマスキング（生活音や話し声を覆う）効用を説明。journal に、シンギングボウルの落ち着き効果について信頼度の高い研究からの傾向（脳波・自律神経・不安低下など、断定はしない）を追記した。"],
       ["v015", "BOWLモードを「お腹に響く重低音サウンドバス」へ進化。水面に触れると超低音のドローンがふわりと立ち上がり、約10秒持続してから約10秒かけて揺らぎながら静かに消える。打音は長い余韻とマレットの芯を持ち、デチューンとLFOで濃密なうねりが生まれる。TONE（旧NOISE TONE）を全モード共通の3バンドEQにして常時表示し、BASS で重低音を音割れ寸前まで追い込めるように。BOWLの音域を下げ水面をより深く長く波打たせ、色を深い藍・エメラルド・ゴールドへ。ヘッドホン推奨。"],
       ["v014", "ripple-gardenタブの「使い方」を現行版に刷新。NORMAL/NOISEの切替、プレイヤー型CRUISE（再生・停止・リピート・シャッフル・次の曲・TIME・VOLUME）、モードに連動するHARMONY/NOISE TONE、低電力のWATER、テーマ・言語の切替まで、いまの操作に合わせて書き直した。about siropには、情報を種のように寝かせAIと育てる「外部記憶OS」と「触れる小宇宙」という考え方をコンパクトに添えた。"],
       ["v013", "細部の仕上げ。更新履歴の全件表示に「簡易表示にもどる」を追加し、5件⇄全件をトグルで往復できるように。journalとripple-gardenの読み物は上下フェードを強め、ヘッダー・フッターの直前で本文が完全に消えるよう調整。about内の初回実装クレジットを更新。"],
@@ -834,6 +840,15 @@ const I18N = {
 <p>すべての周波数を均等に含む音はホワイトノイズと呼ばれる。低い周波数ほど強くなるよう傾けたものがピンクノイズ、さらに深く沈めたものがブラウンノイズ。滝や豪雨、飛行機の機内のような重く柔らかい響きはブラウンノイズに近い。ripple-garden の BOWL モードは、このブラウンノイズを高い共鳴フィルタに通して「擦られたガラスの鉢」の声を作っている。</p>
 <h2>環境音はなぜ心地よいのか</h2>
 <p>一定の環境音が突発的な物音を覆い隠すこと（マスキング）で、集中や入眠を保ちやすくなると報告されている。また自然音の多くは、規則と不規則のあいだ——いわゆる 1/f ゆらぎ——を持ち、予測できそうでできない刺激が注意をやわらかく解放するとも言われる。効果には個人差があり、万能ではない。それでも「水の音で部屋を満たす」という習慣が世界中にあることは確かだ。</p>
+<h2>クリスタルボウルの音と落ち着き ― 研究では</h2>
+<p>シンギングボウル（金属製・クリスタル製）の音とリラックスの関係は、査読論文やシステマティックレビューでも調べられている。販売目的のサイトも多く玉石混交だが、信頼度の高い学術ソースに限ると、いくつかの方向がくり返し報告されている。あくまで研究上の傾向で、効果には個人差があり、医学的な助言ではない。</p>
+<ul>
+<li><strong>脳波のうつろい</strong> — 音の干渉が生む低い「うなり」が、覚醒・緊張に関わる速い脳波を抑え、深いリラックスに関わる遅い脳波を増やす方向が報告されている。</li>
+<li><strong>自律神経のかたむき</strong> — 心拍変動の解析で、副交感神経（休息側）の指標が増え、安静時の心拍が下がる傾向が複数の研究で示されている。</li>
+<li><strong>不安・緊張の低下</strong> — 対照試験や観察研究で、状態不安や気分のスコアが改善したという報告がある。</li>
+<li><strong>努力のいらない受動性</strong> — 意識的な集中を要する弛緩法と違い、聴くだけで受動的にリラックス反応が起きやすいと考えられている。</li>
+</ul>
+<p class="note">※ ripple-garden の音はボウルそのものではなく、その重低音に着想した合成音です。上記は一般的な研究傾向であり、効果を保証するものではありません。</p>
 <h2>水音のクロニクル</h2>
 <ul>
 <li>江戸期 — 日本庭園の鹿威しと水琴窟。水滴の反響を愛でる装置が園芸の中に生まれる。</li>
@@ -849,12 +864,15 @@ const I18N = {
     about: `
 <h2>ripple-garden とは</h2>
 <p class="lead">夜の水面をひとつの楽器にした庭。波は本物の物理（波動方程式）で広がり、音はその出来事——着水・反射・干渉——から生まれる。触れる環境音楽。</p>
+<h2>ふたつのモード ― NORMAL と 音浴（BATH）</h2>
+<p>この庭にはふたつの性格があります。<strong>NORMAL</strong> は、水面に触れて音と波紋を奏でる楽器。<strong>音浴（BATH）</strong> は、途切れない音の層に身を浸して過ごすモードです。</p>
+<p>音浴（BATH）は、集中やリラックスのためだけのものではありません。一定の音が<strong>生活音・話し声・外の工事の喧噪などをやわらかく覆い隠す</strong>はたらき（サウンドマスキング）を持ちます。不安やイライラからくる動悸に意識が持っていかれそうなとき、その音の層に身をあずけると、気がそれて少し和らぐことがあります（<strong>感じ方には個人差があります</strong>）。</p>
 <h2>使い方</h2>
 <ul>
 <li>クリック / タップ — 一滴。縦の位置が音高、横の位置が音の左右とコードを決める。</li>
 <li>ドラッグ — 水面を撫でる。スペースキー — ポインタの位置に一滴。連打でリズムが刻める。</li>
 <li>スペースを押し込みながらポインタを動かす — 弓奏。分散和音が移動方向に沿って歩く。</li>
-<li>MODE — NORMAL と NOISE を切り替え、それぞれのリストから選ぶ。NORMAL は CALM / GLASS / STORM / RESONANCE / ZEN / BOWL と木琴・鉄琴（硬いバチ・毛糸のバチ）の10種、NOISE はホワイト / ピンク / ブラウンの3種。</li>
+<li>MODE — NORMAL と 音浴（BATH）を切り替え、それぞれのリストから選ぶ。NORMAL は CALM / GLASS / STORM / RESONANCE / ZEN と木琴・鉄琴（硬いバチ・毛糸のバチ）。音浴（BATH）は BOWL（低音浴）／ホワイト／ピンク／ブラウン。</li>
 <li>CRUISE — 自動演奏のプレイヤー。▶ で再生・■ で停止、リピート（∞ループ）、シャッフル、そのとなりの「次の曲」、TIME（5〜120分）と VOLUME を備える。環境音動画のように流しておける。</li>
 <li>HARMONY — NORMAL のときのコード進行（王道・カノン・小室…）。ASSIST ON で反射音まで心地良く最適化、OFF で違和感がたまに混じる。SUSTAIN でロングトーン。</li>
 <li>TONE — 音の低・中・高を整える3バンド。常に表示され、NORMAL では全体の音に、NOISE では持続ノイズに効く。とくに BASS は BOWL の重低音を探る要のつまみ。</li>
@@ -862,8 +880,8 @@ const I18N = {
 <li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。CLEAR で波面をリセット。</li>
 <li>テーマ / 言語 — 画面下の PREFS で、ライト・ダーク・システム、日本語・English・Français を切り替え。</li>
 </ul>
-<h2>BOWL ― お腹に響く重低音</h2>
-<p>BOWL は、アルケミークリスタルボウルのような重低音のサウンドバスを目指したモード。ひとつひとつの仕組みを知ると、より深く沈み込めます。</p>
+<h2>音浴（BATH）の低音浴 ― BOWL</h2>
+<p>BOWL（低音浴）は、<strong>アルケミークリスタルボウルの重低音だけを抽出した低音浴</strong>です。きらびやかな高い倍音をそぎ落とし、お腹に響く超低音にしぼり込んでいます。ひとつひとつの仕組みを知ると、より深く沈み込めます。</p>
 <ul>
 <li><strong>触れると超低音が立ち上がる</strong> — 水面に触れた瞬間からふわりと低音のドローンが立ち上がり、0.5秒ほどでリッチな響きになります。約10秒そのまま持続し、そこから約10秒かけて、ゆっくりした揺らぎ（うねり）を伴いながら静かに消えていきます。</li>
 <li><strong>長い余韻と芯のある打音</strong> — 触れた音は長く美しい余韻を引きます。鳴り始めには、マレットで「コン…」と叩いたような芯がほんの一瞬だけ混じります。</li>
@@ -871,8 +889,8 @@ const I18N = {
 <li><strong>TONE の BASS で重低音を追い込む</strong> — TONE の BASS を上げるほど低音が増します。<strong>上げすぎると音が割れて「バリバリ」とノイズになります。</strong>割れる手前のいちばん豊かに鳴る一点（スイートスポット）を、BASS をゆっくり動かしながら探してください。</li>
 </ul>
 <p class="note">※ この超低音は小さなスピーカーやスマホの内蔵スピーカーではほとんど鳴りません。<strong>ヘッドホンやサブウーファーのある環境を強くおすすめします。</strong>低音を限界まで追い込んでいるぶん音割れしやすいので、音量は控えめから始めてください。</p>
-<h2>ノイズ3モードの使い方と効用</h2>
-<p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。モードを選んで CRUISE の START を押すと、途切れない音の層（ノイズベッド）が流れ続ける。TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
+<h2>音浴（BATH）の3つのノイズ</h2>
+<p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。音浴（BATH）で選んで CRUISE の START を押すと、途切れない音の層が流れ続け、生活音をやわらかく覆います。TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
 <ul>
 <li><strong>WHITE（ホワイト）</strong> — 全周波数を均等に含む「シャー」。集中と、外の物音の遮断に。慣れると眠りにも。刺さると感じたら TREBLE を下げて。</li>
 <li><strong>PINK（ピンク）</strong> — 低い方へ傾いた「ザー」。雨や滝のような自然な厚み。ホワイトより柔らかく、集中・遮断・睡眠に。</li>
@@ -890,6 +908,8 @@ const I18N = {
   },
   en: {
     hint: "TOUCH THE WATER",
+    modeNormalLabel: "NORMAL", modeBathLabel: "BATH",
+    confirmToBath: "Switch to BATH mode?", confirmFromBath: "Leave BATH mode? (the sustained sound stops)",
     themes: ["light", "dark", "system"],
     close: "close",
     histAll: "view full history",
@@ -897,6 +917,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v016", "BOWL moves into the BATH group. The sustained sounds — once just white/pink/brown noise — now include BOWL (bass bath) under one umbrella, BATH, set apart from NORMAL. Crossing from NORMAL to BATH always asks first, dips the volume to ~10%, and shuffle now stays within NORMAL only (BATH is never picked). The UI label \"NOISE\" is renamed BATH (FR: BAIN), and BOWL becomes \"BOWL — Bass Bath\". The ripple-garden tab is restructured to open with the two modes and BATH's sound-masking benefit (covering household noise and voices), and the journal gains a summary of what higher-trust research reports about singing bowls and calm (brainwaves, autonomic balance, lower anxiety — without overclaiming)."],
       ["v015", "BOWL grows into a heavy-bass sound bath. Touch the water and a sub-bass drone swells in, holds for about ten seconds, then fades over another ten with a slow wavering. Each touch rings with a long tail and a mallet-like core, while detuning and an LFO create a dense undulation. TONE (formerly NOISE TONE) becomes a three-band EQ shared by every mode, always visible, so BASS can push the low end right up to the edge of distortion. BOWL's range drops, the water ripples deeper and longer, and its palette shifts to deep indigo, emerald and gold. Headphones recommended."],
       ["v014", "Rewrote the “how to play” section in the ripple-garden tab to match the current build: the NORMAL/NOISE switch, the player-style CRUISE (play, stop, repeat, shuffle, next, TIME, VOLUME), the mode-linked HARMONY / NOISE TONE, the low-power WATER toggle, and theme/language. About sirop now carries, in brief, the idea behind it all — an “external-memory OS” that sows information like seeds and grows it with AI, and turning knowledge into little worlds you can touch."],
       ["v013", "Finishing touches. The full history view gains a “show recent only” toggle, so you can collapse it back to five. The journal and ripple-garden readers now fade harder at top and bottom, so text vanishes completely just before the header and footer. Updated the first-implementation credit in the about section."],
@@ -920,6 +941,15 @@ const I18N = {
 <p>Sound containing all frequencies equally is white noise. Tilt the spectrum toward the lows and you get pink noise; sink it deeper and it becomes brown noise — the heavy, soft wash of waterfalls, downpours and aircraft cabins. The BOWL mode of ripple-garden feeds brown noise through high-resonance filters to create the voice of a rubbed glass bowl.</p>
 <h2>Why ambient sound feels good</h2>
 <p>Steady ambient sound is reported to mask sudden noises, which can help focus and sleep. Many natural sounds also live between order and chance — the so-called 1/f fluctuation — gently releasing attention. Effects vary from person to person; nothing here is universal. Yet the habit of filling a room with water sound exists everywhere.</p>
+<h2>Singing bowls and calm — what research says</h2>
+<p>The link between singing-bowl sound (metal and crystal) and relaxation has been studied in peer-reviewed papers and systematic reviews. Many sources are sales-driven, so quality varies; but limiting to higher-trust academic sources, a few directions are reported repeatedly. These are research tendencies only — effects vary between people, and none of this is medical advice.</p>
+<ul>
+<li><strong>Shifting brainwaves</strong> — the low "beats" from acoustic interference are reported to reduce the faster waves tied to arousal and tension while increasing the slower waves tied to deep relaxation.</li>
+<li><strong>A tilt in the autonomic balance</strong> — heart-rate-variability analyses show parasympathetic (rest) indices rising and resting heart rate falling across several studies.</li>
+<li><strong>Lower anxiety and tension</strong> — controlled and observational studies report improved state-anxiety and mood scores.</li>
+<li><strong>Effortless, passive relaxation</strong> — unlike methods that need conscious focus, simply listening seems to trigger a relaxation response passively.</li>
+</ul>
+<p class="note">※ ripple-garden's sound is not an actual bowl but a synthesis inspired by its deep bass. The above are general research tendencies and do not guarantee any effect.</p>
 <h2>A chronicle of water sound</h2>
 <ul>
 <li>Edo period — shishi-odoshi and suikinkutsu in Japanese gardens: devices built to admire the echo of a drop.</li>
@@ -935,12 +965,15 @@ const I18N = {
     about: `
 <h2>what is ripple-garden</h2>
 <p class="lead">A garden where a night water surface becomes an instrument. Waves spread by real physics (the wave equation); sound is born from its events — drops, reflections, interferences. Ambient music you can touch.</p>
+<h2>two modes — NORMAL and BATH</h2>
+<p>This garden has two characters. <strong>NORMAL</strong> is an instrument you play by touching the water for sound and ripples. <strong>BATH</strong> is a mode for soaking in an unbroken layer of sound.</p>
+<p>BATH isn't only for focus and relaxation. A steady sound <strong>softly masks household noise, voices and outside construction din</strong> (sound masking). When anxiety or irritation pulls your attention toward a racing heartbeat, letting yourself sink into that layer of sound can draw your attention away and ease it a little (<strong>this varies from person to person</strong>).</p>
 <h2>how to play</h2>
 <ul>
 <li>Click / tap — one drop. Vertical position sets pitch, horizontal sets pan and chord.</li>
 <li>Drag — stroke the water. Spacebar — a drop at the pointer; tap it rhythmically.</li>
 <li>Hold space and move the pointer — bowing: an arpeggio walks along your movement.</li>
-<li>MODE — switch between NORMAL and NOISE, then pick from each list. NORMAL has ten voices (CALM / GLASS / STORM / RESONANCE / ZEN / BOWL plus xylophone and glockenspiel, hard & yarn mallets); NOISE has white / pink / brown.</li>
+<li>MODE — switch between NORMAL and BATH, then pick from each list. NORMAL has CALM / GLASS / STORM / RESONANCE / ZEN plus xylophone and glockenspiel (hard & yarn mallets). BATH has BOWL (bass bath) / white / pink / brown.</li>
 <li>CRUISE — a self-playing transport: ▶ play, ■ stop, repeat (∞ loop), shuffle, a “next” button beside it, plus TIME (5–120 min) and VOLUME. Leave it on like an ambient video.</li>
 <li>HARMONY — the chord progression in NORMAL (royal road, canon, 50s…). ASSIST ON optimises everything — even reflections — toward pleasant chords, OFF lets a little friction in; SUSTAIN for long tones.</li>
 <li>TONE — a three-band bass / mid / treble shaper, always visible. In NORMAL it shapes the whole sound, in NOISE the sustained noise. BASS in particular is the key to dialing in BOWL's deep low end.</li>
@@ -948,8 +981,8 @@ const I18N = {
 <li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends. CLEAR resets the surface.</li>
 <li>Theme / language — at the bottom in PREFS: light, dark, system, and 日本語 / English / Français.</li>
 </ul>
-<h2>BOWL — bass you feel in your body</h2>
-<p>BOWL aims at a heavy-bass sound bath, like an alchemy crystal singing bowl. Knowing each piece lets you sink in deeper.</p>
+<h2>BATH's bass bath — BOWL</h2>
+<p>BOWL (bass bath) is <strong>only the deep bass of an alchemy crystal singing bowl, extracted</strong>. The bright high overtones are stripped away, leaving a sub-bass you feel in your body. Knowing each piece lets you sink in deeper.</p>
 <ul>
 <li><strong>A sub-bass swells when you touch</strong> — the moment you touch the water, a low drone fades in and turns rich within about half a second. It holds for roughly ten seconds, then fades away over another ten with a slow, wavering shimmer.</li>
 <li><strong>Long tails with a core</strong> — each touch rings with a long, beautiful tail, and a faint mallet-like "tok" gives the onset a pleasant core.</li>
@@ -957,8 +990,8 @@ const I18N = {
 <li><strong>Dial in the low end with TONE BASS</strong> — raising TONE's BASS adds weight. <strong>Push it too far and the sound breaks up into a crackly distortion.</strong> Move BASS slowly to find the single richest point just before it breaks — its sweet spot.</li>
 </ul>
 <p class="note">※ This sub-bass barely sounds on small or phone speakers. <strong>Headphones or a subwoofer are strongly recommended.</strong> Because the low end is pushed to its limit it distorts easily, so start at a low volume.</p>
-<h2>the three noise modes — use &amp; benefits</h2>
-<p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Select one and press START in CRUISE: an unbroken layer of sound (the noise bed) keeps flowing. Shape it to your night with the TONE bass / mid / treble knobs.</p>
+<h2>BATH's three noises</h2>
+<p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Choose one in BATH and press START in CRUISE: an unbroken layer of sound keeps flowing and softly covers household noise. Shape it to your night with the TONE bass / mid / treble knobs.</p>
 <ul>
 <li><strong>WHITE</strong> — an even “shhh” across all frequencies. For focus and masking outside noise; for sleep once you're used to it. If it feels sharp, lower TREBLE.</li>
 <li><strong>PINK</strong> — a softer “shhh” tilted toward the lows, like rain or a waterfall. Gentler than white, for focus, masking and sleep.</li>
@@ -976,6 +1009,8 @@ const I18N = {
   },
   fr: {
     hint: "TOUCHEZ L'EAU",
+    modeNormalLabel: "NORMAL", modeBathLabel: "BAIN",
+    confirmToBath: "Passer en mode BAIN ?", confirmFromBath: "Quitter le mode BAIN ? (le son continu s'arrête)",
     themes: ["clair", "sombre", "système"],
     close: "fermer",
     histAll: "voir tout l'historique",
@@ -983,6 +1018,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v016", "BOWL rejoint le groupe BAIN. Les sons continus — autrefois seulement les bruits blanc/rose/brun — incluent désormais BOWL (bain de basses) sous une même bannière, le BAIN, distincte de NORMAL. Passer de NORMAL au BAIN demande toujours confirmation, abaisse le volume à ~10 %, et le mode aléatoire reste dans NORMAL seul (le BAIN n'est jamais choisi). L'étiquette « NOISE » devient BAIN (EN : BATH), et BOWL devient « BOWL — Bain de basses ». L'onglet ripple-garden est restructuré pour s'ouvrir sur les deux modes et le bienfait de masquage sonore du BAIN (couvrir bruits domestiques et voix), et le journal reçoit un résumé de ce que rapporte la recherche fiable sur les bols chantants et le calme (ondes cérébrales, équilibre autonome, baisse de l'anxiété — sans excès)."],
       ["v015", "BOWL devient un bain sonore très grave. Touchez l'eau et un drone sub-grave s'installe, tient une dizaine de secondes, puis s'efface sur dix autres avec une lente ondulation. Chaque toucher résonne d'une longue traîne et d'un cœur de mailloche, tandis que désaccord et LFO créent une ondulation dense. TONE (ex-NOISE TONE) devient un égaliseur trois bandes commun à tous les modes, toujours visible, pour que le BASS pousse les graves juste au bord de la distorsion. La tessiture de BOWL descend, l'eau ondule plus profond et plus longtemps, et sa palette vire au bleu indigo profond, émeraude et or. Casque recommandé."],
       ["v014", "Réécriture de la section « comment jouer » de l'onglet ripple-garden pour coller à la version actuelle : la bascule NORMAL/NOISE, la CROISIÈRE de type lecteur (lecture, arrêt, répétition, aléatoire, suivant, TIME, VOLUME), HARMONY / NOISE TONE liés au mode, l'interrupteur WATER basse consommation, et thème/langue. À propos de sirop porte désormais, en bref, l'idée derrière tout cela — un « OS de mémoire externe » qui sème l'information comme des graines et la cultive avec l'IA, et transforme le savoir en petits mondes que l'on touche."],
       ["v013", "Touches de finition. L'historique complet reçoit une bascule « afficher les récents » pour le replier à cinq entrées. Les lecteurs journal et ripple-garden s'estompent plus nettement en haut et en bas, le texte disparaissant complètement juste avant l'en-tête et le pied de page. Crédit de première implémentation mis à jour dans la section about."],
@@ -1006,6 +1042,15 @@ const I18N = {
 <p>Un son contenant toutes les fréquences à égalité est un bruit blanc. Incliné vers les graves, il devient rose ; enfoncé plus profond, brun — la rumeur lourde et douce des cascades et des averses. Le mode BOWL de ripple-garden fait passer un bruit brun dans des filtres très résonants pour créer la voix d'un bol de verre frotté.</p>
 <h2>Pourquoi le son ambiant apaise</h2>
 <p>On rapporte qu'un fond sonore stable masque les bruits soudains, ce qui peut aider la concentration et le sommeil. Beaucoup de sons naturels vivent entre ordre et hasard — la fameuse fluctuation en 1/f — et relâchent doucement l'attention. Les effets varient selon les personnes ; rien d'universel ici. Pourtant, l'habitude d'emplir une pièce du son de l'eau existe partout.</p>
+<h2>Les bols chantants et le calme — ce que dit la recherche</h2>
+<p>Le lien entre le son des bols chantants (métal et cristal) et la relaxation a été étudié dans des articles évalués par les pairs et des revues systématiques. Beaucoup de sources sont commerciales, donc la qualité varie ; mais en se limitant aux sources académiques les plus fiables, quelques directions reviennent régulièrement. Ce ne sont que des tendances de recherche — les effets varient selon les personnes, et rien de tout cela n'est un avis médical.</p>
+<ul>
+<li><strong>Des ondes cérébrales qui glissent</strong> — les « battements » graves nés de l'interférence acoustique réduiraient les ondes rapides liées à l'éveil et à la tension, tout en augmentant les ondes lentes liées à la relaxation profonde.</li>
+<li><strong>Un basculement du système autonome</strong> — les analyses de variabilité de la fréquence cardiaque montrent une hausse des indices parasympathiques (repos) et une baisse de la fréquence cardiaque au repos dans plusieurs études.</li>
+<li><strong>Moins d'anxiété et de tension</strong> — des études contrôlées et observationnelles rapportent une amélioration des scores d'anxiété d'état et d'humeur.</li>
+<li><strong>Une relaxation passive, sans effort</strong> — contrairement aux méthodes exigeant une concentration consciente, la simple écoute semble déclencher passivement une réponse de relaxation.</li>
+</ul>
+<p class="note">※ Le son de ripple-garden n'est pas un vrai bol mais une synthèse inspirée de son grave profond. Ce qui précède relève de tendances générales de recherche et ne garantit aucun effet.</p>
 <h2>Chronique du son de l'eau</h2>
 <ul>
 <li>Époque d'Edo — shishi-odoshi et suikinkutsu : des dispositifs de jardin pour admirer l'écho d'une goutte.</li>
@@ -1021,12 +1066,15 @@ const I18N = {
     about: `
 <h2>qu'est-ce que ripple-garden</h2>
 <p class="lead">Un jardin où la surface nocturne de l'eau devient un instrument. Les ondes se propagent par une vraie physique (l'équation d'onde) ; le son naît de ses événements — gouttes, réflexions, interférences. Une musique ambiante que l'on touche.</p>
+<h2>deux modes — NORMAL et BAIN</h2>
+<p>Ce jardin a deux caractères. <strong>NORMAL</strong> est un instrument dont on joue en touchant l'eau pour créer son et ondulations. <strong>BAIN</strong> est un mode où l'on se plonge dans une couche de son ininterrompue.</p>
+<p>Le BAIN n'est pas seulement pour la concentration et la détente. Un son régulier <strong>masque doucement les bruits domestiques, les voix et le vacarme des travaux extérieurs</strong> (masquage sonore). Quand l'anxiété ou l'irritation attire l'attention vers un cœur qui s'emballe, se laisser couler dans cette couche de son peut en détourner l'attention et l'apaiser un peu (<strong>cela varie selon les personnes</strong>).</p>
 <h2>comment jouer</h2>
 <ul>
 <li>Clic / toucher — une goutte. La hauteur règle la note, l'horizontale le panoramique et l'accord.</li>
 <li>Glisser — caresser l'eau. Barre d'espace — une goutte sous le pointeur ; frappez-la en rythme.</li>
 <li>Espace maintenu + déplacement — l'archet : un arpège marche le long de votre geste.</li>
-<li>MODE — basculez entre NORMAL et NOISE, puis choisissez dans chaque liste. NORMAL compte dix voix (CALM / GLASS / STORM / RESONANCE / ZEN / BOWL plus xylophone et glockenspiel, mailloches dures et en laine) ; NOISE propose blanc / rose / brun.</li>
+<li>MODE — basculez entre NORMAL et BAIN, puis choisissez dans chaque liste. NORMAL compte CALM / GLASS / STORM / RESONANCE / ZEN plus xylophone et glockenspiel (mailloches dures et en laine). BAIN propose BOWL (bain de basses) / blanc / rose / brun.</li>
 <li>CRUISE — un lecteur automatique : ▶ lecture, ■ arrêt, répétition (boucle ∞), aléatoire, un bouton « suivant » à côté, plus TIME (5–120 min) et VOLUME. À laisser tourner comme une vidéo ambiante.</li>
 <li>HARMONY — la progression d'accords en NORMAL (route royale, canon, années 50…). ASSIST ON optimise tout — même les réflexions — vers des accords agréables, OFF laisse entrer un peu de friction ; SUSTAIN pour les notes longues.</li>
 <li>TONE — un égaliseur trois bandes grave / médium / aigu, toujours visible. En NORMAL il façonne tout le son, en NOISE le bruit continu. Le BASS (grave) est surtout la clé pour régler les basses profondes de BOWL.</li>
@@ -1034,8 +1082,8 @@ const I18N = {
 <li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO. CLEAR réinitialise la surface.</li>
 <li>Thème / langue — en bas dans PREFS : clair, sombre, système, et 日本語 / English / Français.</li>
 </ul>
-<h2>BOWL — des basses que l'on ressent dans le corps</h2>
-<p>BOWL vise un bain sonore très grave, comme un bol de cristal d'alchimie. Comprendre chaque élément permet de s'y enfoncer davantage.</p>
+<h2>Le bain de basses du BAIN — BOWL</h2>
+<p>BOWL (bain de basses) est <strong>uniquement le grave profond d'un bol de cristal d'alchimie, extrait</strong>. Les brillants harmoniques aigus sont retirés, ne laissant qu'un sub-grave que l'on ressent dans le corps. Comprendre chaque élément permet de s'y enfoncer davantage.</p>
 <ul>
 <li><strong>Un sub-grave monte au toucher</strong> — dès que vous touchez l'eau, un drone grave s'installe en fondu et devient riche en une demi-seconde environ. Il tient une dizaine de secondes, puis disparaît sur dix autres avec un lent scintillement ondoyant.</li>
 <li><strong>De longues traînes avec un cœur</strong> — chaque toucher résonne d'une longue et belle traîne, et un léger « toc » de mailloche donne à l'attaque un cœur agréable.</li>
@@ -1043,8 +1091,8 @@ const I18N = {
 <li><strong>Réglez les graves avec TONE BASS</strong> — monter le BASS de TONE ajoute du poids. <strong>Trop loin, le son se brise en une distorsion grésillante.</strong> Déplacez BASS lentement pour trouver le point le plus riche juste avant la cassure — son point idéal.</li>
 </ul>
 <p class="note">※ Ce sub-grave ne sort presque pas sur de petits haut-parleurs ou ceux d'un téléphone. <strong>Un casque ou un caisson de basses est fortement recommandé.</strong> Comme les basses sont poussées à leur limite, le son se déforme facilement ; commencez à faible volume.</p>
-<h2>les trois modes de bruit — usage &amp; bienfaits</h2>
-<p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un et appuyez sur START en CROISIÈRE : une couche de son ininterrompue (la nappe de bruit) continue de couler. Façonnez-la à votre nuit avec les réglages TONE grave / médium / aigu.</p>
+<h2>Les trois bruits du BAIN</h2>
+<p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un dans le BAIN et appuyez sur START en CROISIÈRE : une couche de son ininterrompue continue de couler et masque doucement les bruits domestiques. Façonnez-la à votre nuit avec les réglages TONE grave / médium / aigu.</p>
 <ul>
 <li><strong>WHITE (blanc)</strong> — un « chhh » égal sur toutes les fréquences. Pour la concentration et masquer les bruits extérieurs ; pour le sommeil une fois habitué. S'il semble trop vif, baissez TREBLE.</li>
 <li><strong>PINK (rose)</strong> — un « chhh » plus doux incliné vers les graves, comme la pluie. Plus doux que le blanc, pour la concentration, le masquage et le sommeil.</li>
@@ -1079,6 +1127,9 @@ const state = {
   water: true, // WATER(動的グラフィック) ON/OFF。OFF=低電力ECO（描画・波面計算・反射/干渉/きらめき停止、音は継続）
 };
 const mode = () => MODES[state.modeIdx];
+// 音浴(BATH)グループ判定: 持続ノイズ3色＋BOWL(低音浴)。UI/シャッフル/確認/音量絞りの境界に使う。
+// 音響合成は m.voice（noise/bowl）で別々に分岐するので、グループ判定とは独立。
+const inNoiseGroup = (m) => m.voice === "noise" || m.id === "bowl";
 const genre = () => GENRES[state.genreIdx];
 const T = () => I18N[state.lang];
 
@@ -2091,8 +2142,8 @@ function cruiseShuffleNow(){
     ui.setGenre(next);
     ui.toast(GENRES[next].label[state.lang].split("—")[0].trim());
   } else {
-    // ノイズ3モードはシャッフル対象から除外（楽器音と質感が違いすぎて驚くため）
-    const pool = MODES.map((_, i) => i).filter(i => MODES[i].voice !== "noise");
+    // 音浴(BATH)グループ（ノイズ3色＋BOWL）はシャッフル対象から除外（性格が違いすぎて驚くため）
+    const pool = MODES.map((_, i) => i).filter(i => !inNoiseGroup(MODES[i]));
     const next = pool[Math.floor(Math.random() * pool.length)];
     ui.setMode(next);
     ui.toast(MODES[next].name + " · " + MODES[next].jp);
@@ -2103,8 +2154,8 @@ function cruiseShuffleNow(){
 let spawnDrop = () => {}; // 入力セクションで実体を与える（クルーズと共有）
 
 const ui = (() => {
-  const normalModeIndices = MODES.map((m, i) => m.voice === "noise" ? -1 : i).filter(i => i >= 0);
-  const noiseModeIndices = ["white", "pink", "brown"].map(id => MODES.findIndex(m => m.id === id));
+  const normalModeIndices = MODES.map((m, i) => inNoiseGroup(m) ? -1 : i).filter(i => i >= 0);
+  const noiseModeIndices = ["bowl", "white", "pink", "brown"].map(id => MODES.findIndex(m => m.id === id));
   const modeNormal = document.getElementById("modeNormal");
   const modeNoise = document.getElementById("modeNoise");
   const normalModeWrap = document.getElementById("normalModeWrap");
@@ -2141,18 +2192,23 @@ const ui = (() => {
   /* --- モード: グループ境界と個別音色を分けて扱う --- */
   let lastNormalMode = normalModeIndices[0];
   let lastNoiseMode = noiseModeIndices[0];
+  // サブラベル: 多言語キャプション(cap)があれば言語別、無ければ従来の jp 固定
+  const modeSub = (m) => (m.cap && m.cap[state.lang]) ? m.cap[state.lang] : m.jp;
   const fillModeSelect = (select, indices) => {
+    const keep = select.value;
+    select.innerHTML = "";
     indices.forEach(i => {
       const m = MODES[i], op = document.createElement("option");
-      op.value = String(i); op.textContent = `${m.name} — ${m.jp}`;
+      op.value = String(i); op.textContent = `${m.name} — ${modeSub(m)}`;
       select.appendChild(op);
     });
+    if (keep) select.value = keep;
   };
   fillModeSelect(selNormalMode, normalModeIndices);
   fillModeSelect(selNoiseMode, noiseModeIndices);
 
   function updateModeUI(){
-    const isNoise = mode().voice === "noise";
+    const isNoise = inNoiseGroup(mode());
     modeNormal.classList.toggle("active", !isNoise);
     modeNoise.classList.toggle("active", isNoise);
     modeNormal.setAttribute("aria-pressed", isNoise ? "false" : "true");
@@ -2173,8 +2229,8 @@ const ui = (() => {
   }
 
   function updateShuffleUI(){
-    const isNoise = mode().voice === "noise";
-    // SHUFFLEはNOISE時に無効・グレーアウト。次の曲はSHUFFLE ONかつNORMALのときだけ有効
+    const isNoise = inNoiseGroup(mode());
+    // SHUFFLEは音浴(BATH)時に無効・グレーアウト。次の曲はSHUFFLE ONかつNORMALのときだけ有効
     btnShuffle.disabled = isNoise;
     btnShuffle.setAttribute("aria-pressed", (cruise.shuffle && !isNoise) ? "true" : "false");
     btnNext.disabled = isNoise || !cruise.shuffle;
@@ -2187,12 +2243,12 @@ const ui = (() => {
   let pendingMode = null;
 
   function applyMode(nextIdx){
-    const wasNoise = MODES[state.modeIdx].voice === "noise";
-    const nowNoise = MODES[nextIdx].voice === "noise";
+    const wasNoise = inNoiseGroup(MODES[state.modeIdx]);
+    const nowNoise = inNoiseGroup(MODES[nextIdx]);
     state.modeIdx = nextIdx;
     if (nowNoise) lastNoiseMode = nextIdx; else lastNormalMode = nextIdx;
-    // 通常音→ノイズは爆音になりやすいので音量を約10%へ強制的に絞る。
-    // ノイズ→通常音へ戻るときは、絞る前の音量へ復帰する。
+    // NORMAL→音浴(BATH=ノイズ3色＋BOWL)は爆音になりやすいので音量を約10%へ強制的に絞る。
+    // 音浴→NORMALへ戻るときは、絞る前の音量へ復帰する。
     if (nowNoise && !wasNoise){
       state._volBeforeNoise = state.volume;
       applyVolume(.1);
@@ -2214,14 +2270,14 @@ const ui = (() => {
 
   function setMode(i){
     const nextIdx = Math.max(0, Math.min(MODES.length - 1, i));
-    // 確認は NORMAL(非noise) ↔ NOISE の境界を越える時だけ。
-    // bell↔bowl↔木琴…のグループ内切替（シャッフルの自動切替を含む）では出さない。
-    const crossing = (MODES[state.modeIdx].voice === "noise") !== (MODES[nextIdx].voice === "noise");
+    // 確認は NORMAL ↔ 音浴(BATH) の境界を越える時だけ（性格が大きく違うため必ず注意を促す）。
+    // グループ内の切替では出さない。
+    const crossing = inNoiseGroup(MODES[state.modeIdx]) !== inNoiseGroup(MODES[nextIdx]);
     if (crossing && (cruise.on || audio.sounding())){
       pendingMode = nextIdx;
-      modeConfirmText.textContent = MODES[nextIdx].voice === "noise"
-        ? "ノイズ再生モードに変更しますか？"
-        : "ノイズ再生が止まりますがいいですか？";
+      modeConfirmText.textContent = inNoiseGroup(MODES[nextIdx])
+        ? T().confirmToBath
+        : T().confirmFromBath;
       modeConfirm.hidden = false;
       modeConfirmNo.focus();
       return false;
@@ -2460,11 +2516,17 @@ const ui = (() => {
     document.documentElement.lang = state.lang;
     hint.textContent = T().hint;
     document.getElementById("brandSub").textContent = T().brandSub + " · " + VERSION.toUpperCase();
+    // モードセグメントのラベル（NORMAL / 音浴(BATH/BAIN)）と、BOWL等の多言語キャプションを反映
+    modeNormal.textContent = T().modeNormalLabel;
+    modeNoise.textContent = T().modeBathLabel;
+    fillModeSelect(selNormalMode, normalModeIndices);
+    fillModeSelect(selNoiseMode, noiseModeIndices);
     buildGenres();
     buildThemes();
     buildModal();
     if (state.tab === "journal") document.getElementById("artJournal").innerHTML = T().journal;
     if (state.tab === "about") document.getElementById("artAbout").innerHTML = T().about;
+    updateModeUI();
   }
   selLang.addEventListener("change", () => {
     state.lang = selLang.value;
