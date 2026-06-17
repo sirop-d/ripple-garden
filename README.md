@@ -12,6 +12,7 @@ A generative water instrument. / Un instrument d'eau génératif.
 ## JPN
 
 - 本物の2D波動方程式による水面。波紋の干渉も画面端の反射も、演出ではなく物理として現れます
+- 水面テーマ「SURFACE」7種＋標準: POND（池）/ STREAM（流れ）/ RAIN GLASS（雨ガラス）/ DEEP WATER（深水）/ SHORE（岸辺）/ GLASS WATER（硝子水面）/ INK WATER（墨流し）。WATERメニューで水面の質感（波の速さ・深さ・さざ波・煌めき・前ボケ・暖寒）を切り替えられ、音モードや表示テーマとは独立です
 - 音は波紋の出来事——着水・反射・干渉——から生まれ、触れた場所が音程・パン・コードを決めます
 - 13のモード: CALM / GLASS / STORM / RESONANCE / ZEN / BOWL に、木琴・鉄琴（硬いバチ／柔らかいバチ）とピンク・ブラウン・ホワイトノイズを追加
 - MODEはNORMAL / 音浴（BATH）を切り替えて選択。音浴（BATH）は持続音に身を浸すモードで、BOWL（低音浴）・ピンク・ブラウン・ホワイトを含みます。音浴中はシャッフルを自動停止し、NORMALへ戻ると直前状態を復元します
@@ -26,6 +27,7 @@ A generative water instrument. / Un instrument d'eau génératif.
 ## ENG
 
 - A water surface driven by the real 2D wave equation — interference and edge reflections emerge from physics, not effects
+- Seven SURFACE water themes plus the default: POND, STREAM, RAIN GLASS, DEEP WATER, SHORE, GLASS WATER and INK WATER. Pick the water's feel — wave speed, depth, shimmer, glints, foreground bokeh, warm/cool light — from the WATER menu, independent of the sound mode and the light/dark theme
 - Sound is born from the water's events (drops, reflections, interferences); where you touch sets pitch, pan and chord
 - 13 modes: the original six plus hard/soft xylophone, hard/soft glockenspiel, and pink/brown/white noise
 - MODE is split into NORMAL / BATH; BATH is a mode for soaking in sustained sound (BOWL bass-bath, pink, brown, white). BATH pauses shuffle and restores its previous state when you return to NORMAL
@@ -40,6 +42,7 @@ A generative water instrument. / Un instrument d'eau génératif.
 ## FRA
 
 - Une surface d'eau gouvernée par la véritable équation d'onde 2D — interférences et réflexions naissent de la physique
+- Sept thèmes d'eau SURFACE plus le réglage par défaut : POND, STREAM, RAIN GLASS, DEEP WATER, SHORE, GLASS WATER et INK WATER. Choisissez la matière de l'eau — vitesse des vagues, profondeur, scintillement, reflets, bokeh d'avant-plan, lumière chaude/froide — depuis le menu WATER, indépendamment du mode sonore et du thème clair/sombre
 - Le son naît des événements de l'eau (gouttes, réflexions, interférences) ; le lieu touché règle hauteur, panoramique et accord
 - 13 modes : les six modes d'origine, xylophone et glockenspiel durs/doux, puis bruits rose/brun/blanc
 - MODE est séparé en NORMAL / BAIN ; le BAIN est un mode où l'on se plonge dans un son continu (BOWL bain de basses, rose, brun, blanc). Le BAIN suspend le mode aléatoire puis restaure son état au retour vers NORMAL

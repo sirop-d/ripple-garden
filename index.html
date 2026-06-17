@@ -3,10 +3,15 @@
   ripple-garden — 波紋の庭
   触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
 
-  @version v016
+  @version v017
   担当AI名: Claude / クー
 
   更新履歴:
+  - v017_20260618_044956: 水面テーマ「SURFACE」を新設（WATER直下のドロップダウン）。CLASSIC（標準）に加え
+    POND / STREAM / RAIN GLASS / DEEP WATER / SHORE / GLASS WATER / INK WATER の7種を追加。各テーマは
+    物理（波速・減衰・反射）×描画（ハイライト・さざ波・深度・煌めき・前ボケ・暖寒）×自律演出（自然ドロップ・
+    雨粒）のプリセットを持ち、音モード(MODES)・PREFSのTHEME(light/dark/system)からは独立。選択はlocalStorageへ
+    保存。録音 / CRUISE / 音浴 / 言語切替 / WATER ECO は不変。
   - v016_20260615_084009: BOWLを音浴（BATH）グループへ移動。①ノイズ3色＋BOWLを「音浴(BATH)」群に統一し、
     NORMAL↔音浴は必ず確認・音量を一律10%へ・シャッフルはNORMALのみ（音浴は選ばない）/ ②「NOISE」を
     「音浴（EN:BATH/FR:BAIN）」へ改名、BOWLを「BOWL — 低音浴」(3言語)に / ③aboutを再構成（最初に2モード概要と
@@ -17,9 +22,6 @@
     ③TONEを全モード共通化（NORMAL用EQ新設・常時表示・「NOISE TONE」→「TONE」改名）でBOWLの重低音を
     音割れ寸前まで追い込み可能に / ④BOWLの音域を下げ水面のdampingを緩和、色を深い藍・エメラルド・ゴールドへ /
     ⑤超低域ハイパス・ドローン同時数制限などの安全策。about/READMEにヘッドホン推奨と使い方を追記。
-  - v014_20260615_031252: ripple-gardenタブの「使い方」を現行UI（NORMAL/NOISE切替・CRUISEプレイヤー・
-    HARMONY⇄NOISE TONE連動・WATER低電力・PREFS）へ全面更新。about siropに、外部記憶OSと
-    「触れる小宇宙」の考え方をコンパクトに1段落追記（3言語）。
 -->
 <html lang="ja">
 <head>
@@ -443,7 +445,7 @@
 
 <button id="brand" aria-label="home">
   <h1>ripple-garden</h1>
-  <span class="sub" id="brandSub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V007</span>
+  <span class="sub" id="brandSub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V017</span>
 </button>
 
 <nav id="tabs">
@@ -502,6 +504,9 @@
   <div class="sec" id="waterSec">
     <div class="trow" id="waterToggle" title="OFFで動的グラフィックを止めて省電力（音は継続）">
       <span class="a-lbl">WATER</span><span class="a-line"></span><span class="a-state">ON</span>
+    </div>
+    <div class="prefs-row" id="surfaceRow"><label style="width:62px">SURFACE</label>
+      <div class="sel-wrap"><select id="selSurface" aria-label="surface"></select></div>
     </div>
     <div class="ctl" id="ctlLife"><label>LIFE</label><input type="range" id="sLife" min="0.4" max="2.2" step="0.01" value="1"></div>
     <div class="ctl" id="ctlSpeed"><label>SPEED</label><input type="range" id="sSpeed" min="0.5" max="1.5" step="0.01" value="1"></div>
@@ -578,9 +583,9 @@
      12. メインループ
    ============================================================ */
 
-const VERSION = "v016";
+const VERSION = "v017";
 const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
-const VERSION_DATE = "2026.06.15";
+const VERSION_DATE = "2026.06.18";
 
 /* ---------- 1. モード定義 ---------- */
 /* c2: 伝播係数(CFL<0.5) / sub: サブステップ / k: 減衰 / amp: 振幅 / octShift: 和声時音域
@@ -699,6 +704,53 @@ const MODES = [
     base:[8,9,10], crest:[200,205,210], trough:[22,25,28], lbase:[228,230,232] },
 ];
 
+/* ---------- 1b. 水面テーマ（SURFACE） ---------- */
+/* 音モード(MODES)・PREFSのTHEME(light/dark/system)から独立した「水面の質感」プリセット層。
+   既存のモード物理/描画に対し phys=乗算 / rend=加算 / amb=自律演出 として軽く重ねる。
+   CLASSIC は全て中立値なので v016 の見え方を画素単位で維持する。 */
+const SURFACES = [
+  { id:"classic", label:{ ja:"CLASSIC — 標準", en:"CLASSIC", fr:"CLASSIQUE" },
+    phys:{ cMul:1, dampMul:1, reflMul:1 },
+    amb:{ driftX:0, breathAmp:.04, breathSpeed:.00021, dropRate:0, dropSize:.03, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:0, shimmer:0, shimScale:.18, depth:0, glint:0, warm:0, ink:0 } },
+
+  { id:"pond", label:{ ja:"POND — 池", en:"POND", fr:"ÉTANG" },
+    phys:{ cMul:.82, dampMul:.70, reflMul:.85 },
+    amb:{ driftX:0, breathAmp:.07, breathSpeed:.00015, dropRate:.010, dropSize:.05, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:.30, shimmer:.10, shimScale:.12, depth:.16, glint:.04, warm:.06, ink:0 } },
+
+  { id:"stream", label:{ ja:"STREAM — 流れ", en:"STREAM", fr:"COURANT" },
+    phys:{ cMul:1.05, dampMul:.95, reflMul:.55 },
+    amb:{ driftX:1.1, breathAmp:.03, breathSpeed:.00030, dropRate:.004, dropSize:.03, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:.32, shimmer:.22, shimScale:.22, depth:.06, glint:.12, warm:.08, ink:0 } },
+
+  { id:"rainglass", label:{ ja:"RAIN GLASS — 雨ガラス", en:"RAIN GLASS", fr:"VERRE DE PLUIE" },
+    phys:{ cMul:1.0, dampMul:1.15, reflMul:.60 },
+    amb:{ driftX:.25, breathAmp:.025, breathSpeed:.00040, dropRate:0, dropSize:.03, rainRate:.55, bokehRate:.016, bokehWarm:.25, bokehSize:55, edge:null },
+    rend:{ highlight:.28, shimmer:.18, shimScale:.26, depth:.10, glint:.10, warm:.06, ink:0 } },
+
+  { id:"deep", label:{ ja:"DEEP WATER — 深水", en:"DEEP WATER", fr:"EAU PROFONDE" },
+    phys:{ cMul:.70, dampMul:.60, reflMul:.75 },
+    amb:{ driftX:.40, breathAmp:.09, breathSpeed:.00011, dropRate:.006, dropSize:.06, rainRate:0, bokehRate:.020, bokehWarm:.55, bokehSize:72, edge:null },
+    rend:{ highlight:.45, shimmer:.14, shimScale:.16, depth:.42, glint:.18, warm:.35, ink:0 } },
+
+  { id:"shore", label:{ ja:"SHORE — 岸辺", en:"SHORE", fr:"RIVAGE" },
+    phys:{ cMul:.95, dampMul:.90, reflMul:1.0 },
+    amb:{ driftX:-.55, breathAmp:.05, breathSpeed:.00018, dropRate:.009, dropSize:.07, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:"bottom" },
+    rend:{ highlight:.34, shimmer:.12, shimScale:.14, depth:.18, glint:.08, warm:.12, ink:0 } },
+
+  { id:"glasswater", label:{ ja:"GLASS WATER — 硝子水面", en:"GLASS WATER", fr:"EAU DE VERRE" },
+    phys:{ cMul:1.15, dampMul:1.05, reflMul:.90 },
+    amb:{ driftX:.18, breathAmp:.03, breathSpeed:.00035, dropRate:.003, dropSize:.025, rainRate:0, bokehRate:.006, bokehWarm:0, bokehSize:34, edge:null },
+    rend:{ highlight:.60, shimmer:.16, shimScale:.30, depth:.10, glint:.24, warm:0, ink:0 } },
+
+  { id:"ink", label:{ ja:"INK WATER — 墨流し", en:"INK WATER", fr:"ENCRE" },
+    phys:{ cMul:.78, dampMul:.50, reflMul:.65 },
+    amb:{ driftX:.50, breathAmp:.04, breathSpeed:.00020, dropRate:.005, dropSize:.05, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:.12, shimmer:.08, shimScale:.10, depth:.50, glint:0, warm:0, ink:1 } },
+];
+const surf = () => SURFACES[state.surfaceIdx] || SURFACES[0];
+
 /* ---------- 2. ハーモニー定義（気持ちの良いコード進行の網羅） ---------- */
 /* ドロップダウン = 定番の心地良いコード進行。ASSIST ON ではこの進行へ全てが最適化され、
    OFF では friction（違和感）がたまに混入する。
@@ -816,6 +868,7 @@ const I18N = {
     brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "クルーズ終了 — おやすみなさい",
     hist: [
+      ["v017", "水面テーマ SURFACE を新設。WATER の下のメニューで、CLASSIC（標準）に POND・STREAM・RAIN GLASS・DEEP WATER・SHORE・GLASS WATER・INK WATER の7つを加えた水面の質感を選べる。各テーマは波の速さ・減衰・反射と、さざ波・煌めき・深さ・前ボケ・暖色寒色などの見え方、雨粒や自然な雫といった自律的な動きをまとめて切り替える。音のモードや表示テーマ（ライト/ダーク）とは独立し、選んだ水面は次回も保存される。"],
       ["v016", "BOWLを「音浴（BATH）」グループへ移動。これまでノイズ3色（ホワイト/ピンク/ブラウン）だった持続音の仲間に BOWL（低音浴）を加え、NORMAL とは性格の違う「音浴（BATH）」としてまとめた。NORMAL から音浴へ切り替えるときは必ず確認し、音量を一律で約10%に絞り、シャッフルは NORMAL の中だけで回る（音浴は選ばれない）。UIの「NOISE」表記を「音浴（英:BATH／仏:BAIN）」に改名し、BOWL は「BOWL — 低音浴」に。ripple-gardenタブを再構成し、最初に NORMAL と音浴の2モードと、音浴のサウンドマスキング（生活音や話し声を覆う）効用を説明。journal に、シンギングボウルの落ち着き効果について信頼度の高い研究からの傾向（脳波・自律神経・不安低下など、断定はしない）を追記した。"],
       ["v015", "BOWLモードを「お腹に響く重低音サウンドバス」へ進化。水面に触れると超低音のドローンがふわりと立ち上がり、約10秒持続してから約10秒かけて揺らぎながら静かに消える。打音は長い余韻とマレットの芯を持ち、デチューンとLFOで濃密なうねりが生まれる。TONE（旧NOISE TONE）を全モード共通の3バンドEQにして常時表示し、BASS で重低音を音割れ寸前まで追い込めるように。BOWLの音域を下げ水面をより深く長く波打たせ、色を深い藍・エメラルド・ゴールドへ。ヘッドホン推奨。"],
       ["v014", "ripple-gardenタブの「使い方」を現行版に刷新。NORMAL/NOISEの切替、プレイヤー型CRUISE（再生・停止・リピート・シャッフル・次の曲・TIME・VOLUME）、モードに連動するHARMONY/NOISE TONE、低電力のWATER、テーマ・言語の切替まで、いまの操作に合わせて書き直した。about siropには、情報を種のように寝かせAIと育てる「外部記憶OS」と「触れる小宇宙」という考え方をコンパクトに添えた。"],
@@ -917,6 +970,7 @@ const I18N = {
     brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
     cruiseEnd: "cruise ended — good night",
     hist: [
+      ["v017", "New SURFACE water themes. A menu under WATER lets you choose the feel of the water — CLASSIC plus POND, STREAM, RAIN GLASS, DEEP WATER, SHORE, GLASS WATER and INK WATER. Each theme reshapes wave speed, damping and reflection together with shimmer, glints, depth, foreground bokeh and warm/cool light, plus gentle autonomous motion like raindrops and stray droplets. It is independent of the sound mode and the light/dark theme, and your choice is remembered."],
       ["v016", "BOWL moves into the BATH group. The sustained sounds — once just white/pink/brown noise — now include BOWL (bass bath) under one umbrella, BATH, set apart from NORMAL. Crossing from NORMAL to BATH always asks first, dips the volume to ~10%, and shuffle now stays within NORMAL only (BATH is never picked). The UI label \"NOISE\" is renamed BATH (FR: BAIN), and BOWL becomes \"BOWL — Bass Bath\". The ripple-garden tab is restructured to open with the two modes and BATH's sound-masking benefit (covering household noise and voices), and the journal gains a summary of what higher-trust research reports about singing bowls and calm (brainwaves, autonomic balance, lower anxiety — without overclaiming)."],
       ["v015", "BOWL grows into a heavy-bass sound bath. Touch the water and a sub-bass drone swells in, holds for about ten seconds, then fades over another ten with a slow wavering. Each touch rings with a long tail and a mallet-like core, while detuning and an LFO create a dense undulation. TONE (formerly NOISE TONE) becomes a three-band EQ shared by every mode, always visible, so BASS can push the low end right up to the edge of distortion. BOWL's range drops, the water ripples deeper and longer, and its palette shifts to deep indigo, emerald and gold. Headphones recommended."],
       ["v014", "Rewrote the “how to play” section in the ripple-garden tab to match the current build: the NORMAL/NOISE switch, the player-style CRUISE (play, stop, repeat, shuffle, next, TIME, VOLUME), the mode-linked HARMONY / NOISE TONE, the low-power WATER toggle, and theme/language. About sirop now carries, in brief, the idea behind it all — an “external-memory OS” that sows information like seeds and grows it with AI, and turning knowledge into little worlds you can touch."],
@@ -1018,6 +1072,7 @@ const I18N = {
     brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
     cruiseEnd: "croisière terminée — bonne nuit",
     hist: [
+      ["v017", "Nouveaux thèmes d'eau SURFACE. Un menu sous WATER permet de choisir la matière de l'eau — CLASSIC, puis POND, STREAM, RAIN GLASS, DEEP WATER, SHORE, GLASS WATER et INK WATER. Chaque thème règle ensemble la vitesse des vagues, l'amortissement et la réflexion, avec scintillements, reflets, profondeur, bokeh d'avant-plan et lumière chaude/froide, ainsi qu'un léger mouvement autonome (gouttes de pluie, gouttelettes). Indépendant du mode sonore et du thème clair/sombre ; votre choix est mémorisé."],
       ["v016", "BOWL rejoint le groupe BAIN. Les sons continus — autrefois seulement les bruits blanc/rose/brun — incluent désormais BOWL (bain de basses) sous une même bannière, le BAIN, distincte de NORMAL. Passer de NORMAL au BAIN demande toujours confirmation, abaisse le volume à ~10 %, et le mode aléatoire reste dans NORMAL seul (le BAIN n'est jamais choisi). L'étiquette « NOISE » devient BAIN (EN : BATH), et BOWL devient « BOWL — Bain de basses ». L'onglet ripple-garden est restructuré pour s'ouvrir sur les deux modes et le bienfait de masquage sonore du BAIN (couvrir bruits domestiques et voix), et le journal reçoit un résumé de ce que rapporte la recherche fiable sur les bols chantants et le calme (ondes cérébrales, équilibre autonome, baisse de l'anxiété — sans excès)."],
       ["v015", "BOWL devient un bain sonore très grave. Touchez l'eau et un drone sub-grave s'installe, tient une dizaine de secondes, puis s'efface sur dix autres avec une lente ondulation. Chaque toucher résonne d'une longue traîne et d'un cœur de mailloche, tandis que désaccord et LFO créent une ondulation dense. TONE (ex-NOISE TONE) devient un égaliseur trois bandes commun à tous les modes, toujours visible, pour que le BASS pousse les graves juste au bord de la distorsion. La tessiture de BOWL descend, l'eau ondule plus profond et plus longtemps, et sa palette vire au bleu indigo profond, émeraude et or. Casque recommandé."],
       ["v014", "Réécriture de la section « comment jouer » de l'onglet ripple-garden pour coller à la version actuelle : la bascule NORMAL/NOISE, la CROISIÈRE de type lecteur (lecture, arrêt, répétition, aléatoire, suivant, TIME, VOLUME), HARMONY / NOISE TONE liés au mode, l'interrupteur WATER basse consommation, et thème/langue. À propos de sirop porte désormais, en bref, l'idée derrière tout cela — un « OS de mémoire externe » qui sème l'information comme des graines et la cultive avec l'IA, et transforme le savoir en petits mondes que l'on touche."],
@@ -1112,7 +1167,7 @@ const I18N = {
 
 /* ---------- 共有状態 ---------- */
 const state = {
-  modeIdx: 0, genreIdx: 0, assist: true, sustain: false,
+  modeIdx: 0, surfaceIdx: 0, genreIdx: 0, assist: true, sustain: false,
   life: 1, speed: 1, reflect: .75, volume: .75,
   lastTapTime: 0,
   tab: "garden",
@@ -1280,8 +1335,9 @@ function finishClear(){
 function stepField(){
   const W = sim.w, H = sim.h;
   const m = mode();
-  const c2 = Math.min(.47, m.c2 * state.speed * state.speed);
-  let damp = 1 - (m.k / state.life);
+  const sf = surf();
+  const c2 = Math.min(.47, m.c2 * sf.phys.cMul * state.speed * state.speed);
+  let damp = 1 - (m.k * sf.phys.dampMul / state.life);
   if (fadeClear.active) damp *= .90; // 光のフェードアウト
   const cur = sim.cur, nxt = sim.prev;
 
@@ -1294,7 +1350,7 @@ function stepField(){
   }
 
   // 端: ミラー境界（反射）。REFLECT が低いほど吸収帯で波を消す
-  const refl = state.reflect;
+  const refl = Math.min(1, state.reflect * sf.phys.reflMul);
   for (let x = 0; x < W; x++){
     nxt[x] = nxt[x + W] * refl;
     nxt[(H-1)*W + x] = nxt[(H-2)*W + x] * refl;
@@ -1343,8 +1399,13 @@ function renderField(now){
   const W = sim.w, H = sim.h, cur = sim.cur, d = sim.img.data;
   const light = isLight();
   // ごく弱い時間揺らぎ — 水面の明度がゆっくり呼吸する
-  const breathe = 1 + .04 * Math.sin(now * .00021);
+  const sf = surf(), R = sf.rend, A = sf.amb;
+  const breathe = 1 + A.breathAmp * Math.sin(now * A.breathSpeed);
   const hg = pal.hg * breathe, sg = pal.sg;
+  const shimOn = R.shimmer > .001, shS = R.shimScale, shAmp = R.shimmer * 26;
+  const shPh = now * .001 * (1 + A.driftX), shPhY = now * .0007;
+  const crestBoost = 1 + R.highlight * .85, troughBoost = 1 + R.depth * 2.2;
+  const warmR = R.warm * 46, warmG = R.warm * 20, inkOn = R.ink > .5;
   const [bR, bG, bB] = pal.base, [cR, cG, cB] = pal.crest, [tR, tG, tB] = pal.trough;
   const [lR, lG, lB] = pal.lbase;
 
@@ -1355,23 +1416,25 @@ function renderField(now){
       const h = cur[i];
       let v = h * hg + (cur[i + yu] - cur[i + yd]) * sg;
       v = v / (1 + Math.abs(v) * .0055); // ソフトクリップ
+      if (shimOn) v += Math.sin(x * shS + shPh) * Math.sin(y * shS * .9 - shPhY) * shAmp;
       if (light){
         // ライト: 明るい水面に波が青く影を落とす
         if (v > 0){
-          const a = v * .0085;
+          const a = v * .0085 * crestBoost;
           d[p] = lR - cR * a; d[p+1] = lG - cG * a; d[p+2] = lB - cB * a;
         } else {
-          const a = v * -.004;
+          const a = v * -.004 * troughBoost;
           d[p] = lR + (255 - lR) * a; d[p+1] = lG + (255 - lG) * a; d[p+2] = lB + (255 - lB) * a;
         }
       } else {
         if (v > 0){
-          const a = v * .01;
-          d[p] = bR + cR * a; d[p+1] = bG + cG * a; d[p+2] = bB + cB * a;
+          const a = v * .01 * crestBoost;
+          d[p] = bR + cR * a + warmR * a; d[p+1] = bG + cG * a + warmG * a; d[p+2] = bB + cB * a;
         } else {
-          const a = v * .009;
+          const a = v * .009 * troughBoost;
           d[p] = bR + tR * a; d[p+1] = bG + tG * a; d[p+2] = bB + tB * a;
         }
+        if (inkOn){ const gg = (d[p] + d[p+1] + d[p+2]) * .333; d[p] += (gg - d[p]) * .55; d[p+1] += (gg - d[p+1]) * .55; d[p+2] += (gg - d[p+2]) * .5; }
       }
     }
   }
@@ -1408,6 +1471,34 @@ function addGlow(x, y, str, col, life, r){
   if (glows.length > 48) glows.shift();
 }
 
+/* 水面テーマの自律演出（音は鳴らさない・視覚のみ）。frame は ECO 中は呼ばない。 */
+function surfaceAmbient(now, dt){
+  const A = surf().amb, R = surf().rend, k = dt / 16.7, light = isLight();
+  // 自然ドロップ（SHORE は下辺寄りに打ち寄せる）
+  if (A.dropRate > 0 && Math.random() < A.dropRate * k){
+    const dx = Math.random() * VW;
+    const dy = A.edge === "bottom" ? VH * (.7 + Math.random() * .3) : Math.random() * VH;
+    injectImpulse(dx, dy, A.dropSize, 4.2);
+  }
+  // 雨粒（RAIN GLASS）: 小さく頻繁
+  if (A.rainRate > 0){
+    let n = A.rainRate * k; n = Math.floor(n) + (Math.random() < (n % 1) ? 1 : 0);
+    for (let r = 0; r < n; r++) injectImpulse(Math.random() * VW, Math.random() * VH, .016 + Math.random() * .02, 3.0);
+  }
+  if (light) return; // 加算発光はダークのみ（ライトは乗算で濁るため）
+  // 煌めき（glint）: 明るく小さい短命のスパーク
+  if (R.glint > 0 && Math.random() < R.glint * k){
+    const col = R.warm > .3 ? "255,212,150" : "208,232,255";
+    addGlow(Math.random() * VW, Math.random() * VH * .92, .5 + Math.random() * .5, col, .35, 4 + Math.random() * 5);
+  }
+  // 前ボケ（bokeh）: 大きく柔らかい発光体（暖色＝オレンジ / 寒色）
+  if (A.bokehRate > 0 && Math.random() < A.bokehRate * k){
+    const warm = Math.random() < A.bokehWarm;
+    const col = warm ? "255,176,116" : "150,200,255";
+    addGlow(Math.random() * VW, Math.random() * VH, .22 + Math.random() * .28, col, 1.7 + Math.random() * 1.2, A.bokehSize * (.6 + Math.random() * .7));
+  }
+}
+
 /* ---------- 7. 波紋イベント検出 ---------- */
 let rippleSeq = 0;
 const ripples = []; // {id, x, y, born, r, freq, e0, walls, met}
@@ -1420,7 +1511,7 @@ function registerRipple(x, y, freq, e0){
 
 function updateRipples(dtMs, now){
   const m = mode();
-  const c2 = Math.min(.47, m.c2 * state.speed * state.speed);
+  const c2 = Math.min(.47, m.c2 * surf().phys.cMul * state.speed * state.speed);
   const pxPerMs = Math.sqrt(c2) * m.sub * sim.cell * 60 / 1000;
   const tau = (m.decay + 1.6) * state.life * 1000;
 
@@ -2185,6 +2276,7 @@ const ui = (() => {
   const btnWav = document.getElementById("btnWav");
   const btnCruise = document.getElementById("btnCruise");
   const selGenre = document.getElementById("selGenre");
+  const selSurface = document.getElementById("selSurface");
   const selTheme = document.getElementById("selTheme");
   const selLang = document.getElementById("selLang");
   let chordTimer = null, toastTimer = null;
@@ -2488,6 +2580,22 @@ const ui = (() => {
   tabBtns.forEach(b => b.addEventListener("click", () => { switchTab(b.dataset.tabv); b.blur(); }));
   document.getElementById("brand").addEventListener("click", () => switchTab("garden"));
 
+  /* --- 水面テーマ（SURFACE） --- */
+  function buildSurfaces(){
+    selSurface.innerHTML = "";
+    SURFACES.forEach((s, i) => {
+      const op = document.createElement("option");
+      op.value = String(i); op.textContent = s.label[state.lang] || s.label.en;
+      selSurface.appendChild(op);
+    });
+    selSurface.value = String(state.surfaceIdx);
+  }
+  selSurface.addEventListener("change", () => {
+    state.surfaceIdx = parseInt(selSurface.value, 10) || 0;
+    try{ localStorage.setItem("ripple-garden_surface", String(state.surfaceIdx)); }catch(e){}
+    selSurface.blur();
+  });
+
   /* --- テーマ --- */
   const media = window.matchMedia("(prefers-color-scheme: light)");
   function buildThemes(){
@@ -2523,6 +2631,7 @@ const ui = (() => {
     fillModeSelect(selNoiseMode, noiseModeIndices);
     buildGenres();
     buildThemes();
+    buildSurfaces();
     buildModal();
     if (state.tab === "journal") document.getElementById("artJournal").innerHTML = T().journal;
     if (state.tab === "about") document.getElementById("artAbout").innerHTML = T().about;
@@ -2567,6 +2676,8 @@ const ui = (() => {
     if (sv === "light" || sv === "dark" || sv === "system") state.theme = sv;
     const sl = localStorage.getItem("ripple-garden_lang");
     if (sl && I18N[sl]) state.lang = sl;
+    const ss = parseInt(localStorage.getItem("ripple-garden_surface"), 10);
+    if (!isNaN(ss) && ss >= 0 && ss < SURFACES.length) state.surfaceIdx = ss;
   }catch(e){}
   selLang.value = state.lang;
   applyTheme();
@@ -2726,6 +2837,7 @@ function frame(now){
   if (!eco){
     const steps = m.sub * Math.max(1, Math.round(dt / 16.7));
     for (let s = 0; s < Math.min(steps, 4); s++) stepField();
+    surfaceAmbient(now, dt);
     lerpPalette();
     updateRipples(dt, now);
     renderField(now);
