@@ -2,7 +2,7 @@
 
 ![ripple-garden](assets/ogp.jpg)
 
-**▶ Play: https://sirop-d.github.io/ripple-garden/**
+**▶ Play: https://sirop.jp/ripple-garden/**
 
 触れた水面が音と模様を生む生成楽器。
 A generative water instrument. / Un instrument d'eau génératif.

@@ -1,0 +1,3236 @@
+<!DOCTYPE html>
+<!--
+  ripple-garden — 波紋の庭
+  触れた水面が音と模様を生む生成楽器（単一HTML / 外部ライブラリなし）
+
+  @version v019
+  担当AI名: Codex / コウ
+
+  更新履歴:
+  - v019_20260618_071646: SCENEごとに波紋エンジンを分岐。RAIN GLASSは縦に滴る雨窓波、SHOREは帯状の岸波、
+    DEEP WATERは広く遅い深水波、SILVER CURRENTは波紋より群泳流れ場を主役にする。タップ注入形状も円形固定を
+    やめ、波面エネルギーの局所最大から泡・光・群れ分離の衝突FXを発生。SCENE切替時は水面・粒子・魚群を再シードし、
+    スクリーンショットを切り替えるような別世界化を狙う。音は不変。
+  - v018_20260618_060213: SURFACEを「環境シーン(SCENE)」へ拡張しUI名もSURFACE→SCENEへ改名。RAIN GLASS /
+    SHORE / DEEP WATER に固有の背景レイヤー（夜窓・浅瀬・深海）と粒子（雨・泡・浮遊粒）・衝突FXを実装し、波頭の
+    白化と擬似normal方向光で円形エフェクト感を低減。新シーン SILVER CURRENT（群泳・水中）を追加＝渦の流れ場で銀の
+    魚群が回りタップで割れて戻る。環境シーンはUIテーマに依らず自前の背景を描く。CLASSIC等は無変更で後方互換・音は不変。
+  - v017_20260618_044956: 水面テーマ「SURFACE」を新設（WATER直下のドロップダウン）。CLASSIC（標準）に加え
+    POND / STREAM / RAIN GLASS / DEEP WATER / SHORE / GLASS WATER / INK WATER の7種を追加。各テーマは
+    物理（波速・減衰・反射）×描画（ハイライト・さざ波・深度・煌めき・前ボケ・暖寒）×自律演出（自然ドロップ・
+    雨粒）のプリセットを持ち、音モード(MODES)・PREFSのTHEME(light/dark/system)からは独立。選択はlocalStorageへ
+    保存。録音 / CRUISE / 音浴 / 言語切替 / WATER ECO は不変。
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="ripple-garden — 触れた水面が音と模様を生む生成楽器。a generative water instrument.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ripple-garden — 波紋の庭">
+<meta property="og:description" content="触れた水面が音と模様を生む生成楽器。波動方程式の水面、イベント駆動の音、WAV書き出し。A generative water instrument.">
+<meta property="og:url" content="https://sirop-d.github.io/ripple-garden/">
+<meta property="og:image" content="https://sirop-d.github.io/ripple-garden/assets/ogp.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="180x180" href="assets/favicon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<title>ripple-garden — 波紋の庭</title>
+<style>
+  /* ---------- 基調（ダーク既定 / html[data-theme=light] で上書き） ---------- */
+  :root{
+    --bg: #04070c;
+    --ink: rgba(196, 214, 230, .78);
+    --ink-dim: rgba(168, 190, 212, .42);
+    --ink-faint: rgba(160, 185, 210, .22);
+    --hairline: rgba(170, 200, 230, .14);
+    --panel-bg: rgba(7, 11, 17, .58);
+    --accent: rgba(165, 210, 250, .9);
+    --rec: rgba(235, 130, 110, .9);
+    --veil: rgba(2, 4, 8, .55);
+    --reader-bg: rgba(4, 7, 12, .74);
+    --opt-bg: #0a0f16;
+    --serif: "Didot", "Bodoni 72", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+    --sans: "Avenir Next", "Helvetica Neue", "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+  html[data-theme="light"]{
+    --bg: #dde6ed;
+    --ink: rgba(38, 58, 78, .85);
+    --ink-dim: rgba(52, 78, 104, .55);
+    --ink-faint: rgba(52, 78, 104, .3);
+    --hairline: rgba(40, 70, 110, .18);
+    --panel-bg: rgba(240, 246, 250, .6);
+    --accent: rgba(22, 92, 170, .85);
+    --rec: rgba(196, 66, 46, .9);
+    --veil: rgba(150, 168, 186, .4);
+    --reader-bg: rgba(226, 234, 241, .8);
+    --opt-bg: #eef4f8;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{
+    width:100%; height:100%; overflow:hidden;
+    background:var(--bg);
+    font-family:var(--sans);
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #view{
+    position:fixed; inset:0; width:100%; height:100%;
+    display:block; cursor:crosshair; touch-action:none;
+  }
+  /* 周辺減光 — 水面に奥行きを与える */
+  #vignette{
+    position:fixed; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 42%, transparent 52%, var(--veil) 100%);
+  }
+
+  /* ---------- 銘 ---------- */
+  #brand{
+    position:fixed; top:24px; left:30px; line-height:1; z-index:30;
+    background:none; border:none; cursor:pointer; text-align:left;
+  }
+  #brand h1{
+    font-family:var(--serif); font-weight:400; font-style:italic; font-size:17px;
+    letter-spacing:.3em; color:var(--ink);
+  }
+  #brand .sub{
+    display:block; margin-top:9px;
+    font-size:8.5px; letter-spacing:.3em; color:var(--ink-dim); font-style:normal;
+  }
+
+  /* ---------- タブ ---------- */
+  #tabs{
+    position:fixed; top:30px; left:50%; transform:translateX(-50%); z-index:30;
+    display:flex; gap:26px;
+  }
+  #tabs .tab{
+    background:none; border:none; padding:4px 1px 7px; cursor:pointer;
+    font-family:var(--sans); font-size:10px; letter-spacing:.28em;
+    color:var(--ink-faint); border-bottom:1px solid transparent;
+    transition:color .3s, border-color .3s;
+  }
+  #tabs .tab:hover{ color:var(--ink-dim); }
+  #tabs .tab.on{ color:var(--ink); border-bottom-color:var(--accent); }
+
+  /* ---------- パネル開閉ボタン ---------- */
+  #panelToggle{
+    position:fixed; top:22px; right:22px; z-index:32;
+    width:34px; height:34px;
+    background:var(--panel-bg); border:1px solid var(--hairline);
+    -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:border-color .3s;
+  }
+  #panelToggle:hover{ border-color:var(--ink-faint); }
+  #panelToggle i{
+    position:relative; width:12px; height:1px; background:var(--ink-dim);
+    transition:transform .35s, background .3s;
+  }
+  #panelToggle i::before{
+    content:""; position:absolute; left:0; top:-4px; width:12px; height:1px;
+    background:inherit; transition:transform .35s, top .35s;
+  }
+  #panelToggle i::after{
+    content:""; position:absolute; left:0; top:4px; width:12px; height:1px;
+    background:inherit; transition:transform .35s, top .35s;
+  }
+  body.panel-open #panelToggle i{ background:var(--ink); transform:rotate(45deg); }
+  body.panel-open #panelToggle i::before{ top:0; transform:rotate(-90deg); }
+  body.panel-open #panelToggle i::after{ top:0; opacity:0; }
+
+  /* ---------- コントロールパネル ---------- */
+  #panel{
+    position:fixed; top:70px; right:22px; z-index:31;
+    width:218px; padding:20px 18px calc(16px + env(safe-area-inset-bottom));
+    background:var(--panel-bg); border:1px solid var(--hairline);
+    -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+    color:var(--ink);
+    opacity:0; transform:translateX(12px); pointer-events:none;
+    transition:opacity .35s, transform .35s;
+    /* iOSのSafariはvhがアドレスバーやホームバーの裏まで伸び、下部(LANG/THEME)が隠れてスクロールも止まる。
+       dvh(動的ビューポート)対応ブラウザでは下行が優先され、下端まで確実にスクロールできる。 */
+    max-height:calc(100vh - 92px);
+    max-height:calc(100dvh - 92px);
+    overflow-y:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin;
+  }
+  body.panel-open #panel{ opacity:1; transform:translateX(0); pointer-events:auto; }
+
+  .sec-label{
+    font-size:8px; letter-spacing:.3em; color:var(--ink-faint);
+    margin-bottom:10px;
+  }
+  .sec + .sec{ margin-top:18px; padding-top:16px; border-top:1px solid var(--hairline); }
+
+  /* モード選択: NORMAL / NOISEの境界を明示し、13行の縦長リストを圧縮する */
+  .mode-segments{ display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:9px; }
+  .mode-segments button{
+    border:1px solid var(--hairline); background:transparent; color:var(--ink-faint);
+    font:8px var(--sans); letter-spacing:.22em; padding:7px 4px; cursor:pointer;
+    transition:color .25s, border-color .25s, background .25s;
+  }
+  .mode-segments button.active{ color:var(--ink); border-color:var(--accent); background:var(--hairline); }
+  .mode-select{ transition:opacity .25s; }
+  .mode-select + .mode-select{ margin-top:6px; }
+  .mode-select.disabled{ opacity:.32; }
+  .mode-select.disabled select{ cursor:not-allowed; }
+
+  /* セレクト（ジャンル / テーマ / 言語 共通） */
+  .sel-wrap{ position:relative; }
+  .sel-wrap::after{
+    content:""; position:absolute; right:11px; top:50%;
+    width:5px; height:5px; pointer-events:none;
+    border-right:1px solid var(--ink-dim); border-bottom:1px solid var(--ink-dim);
+    transform:translateY(-70%) rotate(45deg);
+  }
+  .sel-wrap select{
+    -webkit-appearance:none; appearance:none; width:100%;
+    background:transparent; border:1px solid var(--hairline);
+    color:var(--ink); font-family:var(--sans);
+    font-size:9px; letter-spacing:.18em;
+    padding:8px 26px 8px 10px; cursor:pointer;
+  }
+  .sel-wrap select:focus{ outline:none; border-color:var(--ink-faint); }
+  .sel-wrap select option{ background:var(--opt-bg); color:var(--ink); letter-spacing:normal; }
+  .prefs-row{ display:flex; align-items:center; gap:12px; padding:5px 0; }
+  .prefs-row label{ font-size:8px; letter-spacing:.24em; color:var(--ink-dim); width:46px; flex:none; }
+  .prefs-row .sel-wrap{ flex:1; }
+
+  /* トグル行（ASSIST / LOOP / SHUFFLE） */
+  .trow{
+    display:flex; align-items:center; gap:10px;
+    margin-top:10px; padding:2px 0; cursor:pointer;
+  }
+  .trow .a-lbl{ font-size:8px; letter-spacing:.24em; color:var(--ink-dim); }
+  .trow .a-line{ flex:1; height:1px; background:var(--hairline); }
+  .trow .a-state{ font-size:8px; letter-spacing:.2em; color:var(--accent); }
+  .trow.off .a-state{ color:var(--ink-faint); }
+  .trow.dim{ opacity:.35; cursor:not-allowed; }
+
+  /* スライダー */
+  .ctl{ display:flex; align-items:center; gap:12px; padding:6px 0; }
+  .ctl label{
+    font-size:8px; letter-spacing:.24em; color:var(--ink-dim); width:58px; flex:none;
+  }
+  .ctl .val{
+    font-size:8px; letter-spacing:.1em; color:var(--ink-faint); width:30px;
+    text-align:right; flex:none; font-variant-numeric:tabular-nums;
+  }
+  .ctl input[type=range]{
+    -webkit-appearance:none; appearance:none; flex:1; min-width:0; height:18px;
+    background:transparent; cursor:pointer;
+  }
+  .ctl input[type=range]::-webkit-slider-runnable-track{
+    height:1px; background:var(--ink-faint);
+  }
+  .ctl input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:9px; height:9px; margin-top:-4px;
+    border-radius:50%; background:var(--bg); border:1px solid var(--accent);
+  }
+  .ctl input[type=range]::-moz-range-track{ height:1px; background:var(--ink-faint); }
+  .ctl input[type=range]::-moz-range-thumb{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--bg); border:1px solid var(--accent);
+  }
+  .ctl.dim{ opacity:.35; pointer-events:none; }
+
+  /* ボタン行 */
+  .btn-row{ display:flex; border:1px solid var(--hairline); }
+  .btn-row button{
+    flex:1; padding:9px 0; background:transparent; border:none;
+    border-right:1px solid var(--hairline);
+    font-family:var(--sans); font-size:8.5px; letter-spacing:.22em;
+    color:var(--ink-dim); cursor:pointer;
+    transition:color .25s, background .25s, opacity .25s;
+  }
+  .btn-row button:last-child{ border-right:none; }
+  .btn-row button:hover:not(:disabled){ color:var(--ink); background:rgba(128,160,190,.07); }
+  .btn-row button:disabled{ opacity:.28; cursor:default; }
+  #btnRec.recording{ color:var(--rec); }
+  #btnRec.recording::before{
+    content:"●"; font-size:7px; margin-right:5px;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  /* CRUISEプレイヤー: ▶/■・次の曲・リピート・シャッフルのアイコンボタン */
+  .transport{ display:flex; align-items:center; gap:10px; margin:2px 0 12px; }
+  .tp-btn{
+    display:flex; align-items:center; justify-content:center;
+    width:34px; height:34px; border-radius:50%;
+    border:1px solid var(--hairline); background:transparent;
+    color:var(--ink-dim); cursor:pointer;
+    transition:color .2s, background .2s, border-color .2s, opacity .2s;
+  }
+  .tp-btn:hover:not([disabled]){ color:var(--ink); }
+  .tp-btn[disabled]{ opacity:.3; cursor:not-allowed; }
+  .tp-btn[aria-pressed="true"]{ color:var(--accent); border-color:var(--accent); background:var(--hairline); }
+  .tp-play{ width:44px; height:44px; border-color:var(--accent); color:var(--accent); background:rgba(128,160,190,.06); }
+  .tp-play.running{ background:var(--hairline); }
+
+  .keys{
+    margin-top:14px; font-size:7.5px; letter-spacing:.16em;
+    color:var(--ink-faint); text-align:center;
+  }
+
+  /* ---------- バッジ類 ---------- */
+  #recBadge, #cruiseBadge{
+    position:fixed; left:30px; z-index:20;
+    font-size:9px; letter-spacing:.28em;
+    font-variant-numeric:tabular-nums;
+    opacity:0; transition:opacity .4s; pointer-events:none;
+  }
+  #recBadge{ bottom:26px; color:var(--rec); }
+  #cruiseBadge{ bottom:48px; color:var(--accent); }
+  #recBadge.on, #cruiseBadge.on{ opacity:1; }
+  #recBadge::before, #cruiseBadge::before{
+    content:"●"; font-size:7px; margin-right:8px;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+
+  /* ---------- コードネーム / トースト ---------- */
+  #chordName{
+    position:fixed; right:30px; bottom:24px; z-index:20;
+    font-family:var(--serif); font-size:14px; font-style:italic;
+    letter-spacing:.22em; color:var(--ink-dim);
+    opacity:0; transition:opacity .9s; pointer-events:none;
+  }
+  #chordName.on{ opacity:.85; transition:opacity .25s; }
+  #toast{
+    position:fixed; left:50%; bottom:84px; transform:translateX(-50%); z-index:20;
+    font-family:var(--serif); font-style:italic; font-size:12px;
+    letter-spacing:.3em; color:var(--ink-dim); white-space:nowrap;
+    opacity:0; transition:opacity 1.2s; pointer-events:none;
+  }
+  #toast.on{ opacity:.9; transition:opacity .4s; }
+
+  /* ---------- 誘い文・フッター ---------- */
+  #hint{
+    position:fixed; left:50%; bottom:52px; transform:translateX(-50%);
+    font-size:9px; letter-spacing:.42em; color:var(--ink-dim);
+    white-space:nowrap; pointer-events:none;
+    animation:breathe 5s ease-in-out infinite;
+    transition:opacity 1.6s;
+  }
+  #hint.gone{ animation:none; opacity:0; }
+  @keyframes breathe{ 0%,100%{opacity:.55} 50%{opacity:.95} }
+
+  #footerBtn{
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:20;
+    background:none; border:none; cursor:pointer;
+    font-family:var(--sans); font-size:8.5px; letter-spacing:.3em;
+    color:var(--ink-faint); transition:color .3s;
+  }
+  #footerBtn:hover{ color:var(--ink); }
+
+  /* ---------- 版情報ダイアログ ---------- */
+  #verModal, #modeConfirm{
+    position:fixed; inset:0; z-index:50;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.35);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+  }
+  #verModal[hidden], #modeConfirm[hidden]{ display:none; }
+  .vm-card{
+    width:min(420px, calc(100vw - 48px));
+    max-height:calc(100vh - 48px); max-height:calc(100dvh - 48px);
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+    background:var(--panel-bg); border:1px solid var(--hairline);
+    -webkit-backdrop-filter:blur(22px); backdrop-filter:blur(22px);
+    padding:28px 26px 22px; color:var(--ink);
+  }
+  .vm-card h3{
+    font-family:var(--serif); font-style:italic; font-weight:400;
+    font-size:16px; letter-spacing:.28em;
+  }
+  .vm-ver{ margin-top:8px; font-size:9px; letter-spacing:.24em; color:var(--ink-dim); }
+  .vm-hist{ margin-top:18px; list-style:none; }
+  .vm-hist li{
+    padding:9px 0; border-top:1px solid var(--hairline);
+    font-size:10.5px; line-height:1.8; color:var(--ink-dim); letter-spacing:.04em;
+  }
+  .vm-hist li b{ color:var(--ink); font-weight:500; letter-spacing:.12em; margin-right:8px; }
+  .vm-close{
+    margin-top:18px; width:100%; padding:9px 0;
+    background:transparent; border:1px solid var(--hairline);
+    font-family:var(--sans); font-size:8.5px; letter-spacing:.26em;
+    color:var(--ink-dim); cursor:pointer; transition:color .25s;
+  }
+  .vm-close:hover{ color:var(--ink); }
+  .vm-more{
+    width:100%; padding:7px 0; background:transparent; border:none;
+    font-family:var(--sans); font-size:8px; letter-spacing:.24em;
+    color:var(--ink-faint); cursor:pointer; transition:color .25s;
+  }
+  .vm-more:hover{ color:var(--ink); }
+  .mc-card{
+    width:min(360px, calc(100vw - 48px));
+    background:var(--panel-bg); border:1px solid var(--hairline);
+    -webkit-backdrop-filter:blur(22px); backdrop-filter:blur(22px);
+    padding:25px 24px 20px; color:var(--ink);
+  }
+  .mc-card p{ font-size:12px; line-height:1.9; letter-spacing:.08em; text-align:center; }
+  .mc-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:20px; }
+  .mc-actions button{
+    padding:9px 0; background:transparent; border:1px solid var(--hairline);
+    font-family:var(--sans); font-size:9px; letter-spacing:.24em;
+    color:var(--ink-dim); cursor:pointer; transition:color .25s, border-color .25s;
+  }
+  .mc-actions button:hover{ color:var(--ink); border-color:var(--ink-faint); }
+
+  /* ---------- 読み物オーバーレイ（journal / about） ---------- */
+  .reader{
+    position:fixed; inset:0; z-index:15;
+    background:var(--reader-bg);
+    -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px);
+    -webkit-user-select:text; user-select:text;
+  }
+  .reader[hidden]{ display:none; }
+  /* スクロールは内側のラッパーで行い、上下端をフェードして
+     ヘッダー（タブ）・フッター（by sirop）と本文が重ならないようにする。
+     mask は要素ボックス基準＝画面上で固定なので、スクロールしても帯位置は動かない。 */
+  .reader-scroll{
+    position:absolute; inset:0; overflow-y:auto;
+    padding:112px 26px 90px;
+    -webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, transparent 72px, #000 116px, #000 calc(100% - 96px), transparent calc(100% - 60px), transparent 100%);
+    mask-image:linear-gradient(to bottom, transparent 0, transparent 72px, #000 116px, #000 calc(100% - 96px), transparent calc(100% - 60px), transparent 100%);
+  }
+  .paper{ max-width:620px; margin:0 auto; }
+  .paper h2{
+    font-family:var(--serif); font-weight:400; font-size:17px;
+    letter-spacing:.24em; color:var(--ink); margin:44px 0 16px;
+  }
+  .paper h2:first-child{ margin-top:0; }
+  .paper p{
+    font-size:12.5px; line-height:2.15; color:var(--ink);
+    letter-spacing:.04em; margin-bottom:14px;
+  }
+  .paper .lead{
+    font-family:var(--serif); font-style:italic; font-size:13.5px;
+    color:var(--ink-dim); line-height:2.2;
+  }
+  .paper .note{ font-size:10.5px; color:var(--ink-dim); line-height:2; }
+  .paper ul{ margin:0 0 14px 1.2em; }
+  .paper li{
+    font-size:12px; line-height:2.1; color:var(--ink); letter-spacing:.04em;
+  }
+  .paper a{ color:var(--accent); text-decoration:none; border-bottom:1px solid var(--hairline); }
+
+  @media (max-width:640px){
+    #brand{ top:18px; left:18px; }
+    #brand h1{ font-size:13px; }
+    #brand .sub{ display:none; }
+    #tabs{ top:64px; gap:18px; }
+    #tabs .tab{ font-size:9px; letter-spacing:.2em; }
+    #panel{ width:202px; right:16px; top:100px; max-height:calc(100vh - 120px); max-height:calc(100dvh - 120px); }
+    #panelToggle{ top:16px; right:16px; }
+    #hint{ bottom:48px; letter-spacing:.3em; }
+    #recBadge{ left:20px; bottom:18px; }
+    #cruiseBadge{ left:20px; bottom:38px; }
+    #chordName{ right:18px; bottom:16px; font-size:12px; }
+    #footerBtn{ bottom:14px; }
+    .reader-scroll{
+      padding:128px 20px 80px;
+      -webkit-mask-image:linear-gradient(to bottom, transparent 0, transparent 92px, #000 132px, #000 calc(100% - 84px), transparent calc(100% - 52px), transparent 100%);
+      mask-image:linear-gradient(to bottom, transparent 0, transparent 92px, #000 132px, #000 calc(100% - 84px), transparent calc(100% - 52px), transparent 100%);
+    }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+<div id="vignette"></div>
+
+<button id="brand" aria-label="home">
+  <h1>ripple-garden</h1>
+  <span class="sub" id="brandSub">波紋の庭 — GENERATIVE WATER INSTRUMENT · V019</span>
+</button>
+
+<nav id="tabs">
+  <button class="tab on" data-tabv="garden">garden</button>
+  <button class="tab" data-tabv="journal">journal</button>
+  <button class="tab" data-tabv="about">ripple-garden</button>
+</nav>
+
+<button id="panelToggle" aria-label="controls"><i></i></button>
+
+<aside id="panel">
+  <div class="sec">
+    <div class="sec-label">MODE</div>
+    <div class="mode-segments" role="group" aria-label="mode group">
+      <button id="modeNormal" class="active" type="button">NORMAL</button>
+      <button id="modeNoise" type="button">音浴</button>
+    </div>
+    <div class="sel-wrap mode-select" id="normalModeWrap">
+      <select id="selNormalMode" aria-label="normal mode"></select>
+    </div>
+    <div class="sel-wrap mode-select disabled" id="noiseModeWrap">
+      <select id="selNoiseMode" aria-label="noise mode" disabled></select>
+    </div>
+  </div>
+  <div class="sec" id="cruiseSec">
+    <div class="sec-label">CRUISE</div>
+    <div class="transport" role="group" aria-label="cruise transport">
+      <button id="btnCruise" class="tp-btn tp-play" type="button" aria-label="再生"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><polygon points="7,5 19,12 7,19" fill="currentColor"/></svg></button>
+      <button id="btnNext" class="tp-btn" type="button" aria-label="次の曲" disabled><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><polygon points="6,5 15,12 6,19" fill="currentColor"/><rect x="16" y="5" width="2.4" height="14" rx="1" fill="currentColor"/></svg></button>
+      <button id="btnRepeat" class="tp-btn" type="button" aria-label="リピート" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/></svg></button>
+      <button id="btnShuffle" class="tp-btn" type="button" aria-label="シャッフル" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h4v4"/><path d="M4 20L20 4"/><path d="M16 20h4v-4"/><path d="M4 4l5 5"/><path d="M15 15l5 5"/></svg></button>
+    </div>
+    <div class="ctl" id="cruiseTimeRow">
+      <label>TIME</label>
+      <input type="range" id="sCruise" min="5" max="120" step="5" value="30">
+      <span class="val" id="cruiseVal">30m</span>
+    </div>
+    <div class="ctl"><label>VOLUME</label><input type="range" id="sVolume" min="0" max="1" step="0.01" value="0.75"></div>
+  </div>
+  <div class="sec" id="harmonySec">
+    <div class="sec-label">HARMONY</div>
+    <div class="sel-wrap"><select id="selGenre" aria-label="genre"></select></div>
+    <div class="trow" id="assistToggle">
+      <span class="a-lbl">ASSIST</span><span class="a-line"></span><span class="a-state">ON</span>
+    </div>
+    <div class="trow off" id="sustainToggle">
+      <span class="a-lbl">SUSTAIN</span><span class="a-line"></span><span class="a-state">OFF</span>
+    </div>
+  </div>
+  <div class="sec" id="noiseToneSec">
+    <div class="sec-label">TONE</div>
+    <div class="ctl"><label>BASS</label><input type="range" id="sNoiseBass" min="-12" max="12" step="0.5" value="0"></div>
+    <div class="ctl"><label>MID</label><input type="range" id="sNoiseMid" min="-12" max="12" step="0.5" value="0"></div>
+    <div class="ctl"><label>TREBLE</label><input type="range" id="sNoiseHigh" min="-12" max="12" step="0.5" value="0"></div>
+  </div>
+  <div class="sec" id="waterSec">
+    <div class="trow" id="waterToggle" title="OFFで動的グラフィックを止めて省電力（音は継続）">
+      <span class="a-lbl">WATER</span><span class="a-line"></span><span class="a-state">ON</span>
+    </div>
+    <div class="prefs-row" id="sceneRow"><label style="width:62px">SCENE</label>
+      <div class="sel-wrap"><select id="selScene" aria-label="scene"></select></div>
+    </div>
+    <div class="ctl" id="ctlLife"><label>LIFE</label><input type="range" id="sLife" min="0.4" max="2.2" step="0.01" value="1"></div>
+    <div class="ctl" id="ctlSpeed"><label>SPEED</label><input type="range" id="sSpeed" min="0.5" max="1.5" step="0.01" value="1"></div>
+    <div class="ctl" id="ctlReflect"><label>REFLECT</label><input type="range" id="sReflect" min="0" max="1" step="0.01" value="0.75"></div>
+  </div>
+  <div class="sec">
+    <div class="sec-label">RECORD</div>
+    <div class="btn-row">
+      <button id="btnRec">REC</button>
+      <button id="btnStop" disabled>STOP</button>
+      <button id="btnWav" disabled>WAV</button>
+      <button id="btnClear">CLEAR</button>
+    </div>
+    <div class="keys">1–9 MODE · C CLEAR · SPACE DROP</div>
+  </div>
+  <div class="sec">
+    <div class="sec-label">PREFS</div>
+    <div class="prefs-row"><label>THEME</label>
+      <div class="sel-wrap"><select id="selTheme" aria-label="theme"></select></div>
+    </div>
+    <div class="prefs-row"><label>LANG</label>
+      <div class="sel-wrap"><select id="selLang" aria-label="language">
+        <option value="ja">JPN</option><option value="en">ENG</option><option value="fr">FRA</option>
+      </select></div>
+    </div>
+  </div>
+</aside>
+
+<section class="reader" id="readerJournal" hidden><div class="reader-scroll"><div class="paper" id="artJournal"></div></div></section>
+<section class="reader" id="readerAbout" hidden><div class="reader-scroll"><div class="paper" id="artAbout"></div></div></section>
+
+<div id="recBadge">REC 00:00</div>
+<div id="cruiseBadge">CRUISE</div>
+<div id="chordName"></div>
+<div id="toast"></div>
+<div id="hint">TOUCH THE WATER · 水面に触れてください</div>
+<button id="footerBtn">ripple-garden <span style="letter-spacing:.18em">by sirop</span></button>
+
+<div id="verModal" hidden>
+  <div class="vm-card">
+    <h3>ripple-garden</h3>
+    <div class="vm-ver" id="vmVer"></div>
+    <ul class="vm-hist" id="vmHist"></ul>
+    <button class="vm-close" id="vmClose"></button>
+  </div>
+</div>
+
+<div id="modeConfirm" hidden>
+  <div class="mc-card" role="dialog" aria-modal="true" aria-labelledby="modeConfirmText">
+    <p id="modeConfirmText"></p>
+    <div class="mc-actions">
+      <button id="modeConfirmNo" type="button">いいえ</button>
+      <button id="modeConfirmYes" type="button">はい</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   ripple-garden v011
+   構成:
+     1. モード定義（水の物性 × 音色）
+     2. ハーモニー定義（定番コード進行・グルーヴ・違和感の匙加減）
+     3. 多言語テキスト（ja / en / fr）
+     4. ハーモニーとアシスト
+     5. 水面シミュレーション（2D波動方程式）+ パレット補間 + フェードクリア
+     6. 描画（ダーク / ライト両対応）
+     7. 波紋イベント検出（反射・干渉）
+     8. サウンドエンジン（Web Audio + ジャンル音色 + フェード）
+     9. 録音と WAV 書き出し
+     10. クルーズエンジン（自動演奏・タイマー・シャッフル）
+     11. UI と入力（タブ / テーマ / 言語 / クリック / スペース奏法）
+     12. メインループ
+   ============================================================ */
+
+const VERSION = "v019";
+const VERSION_SUB = "GENERATIVE WATER INSTRUMENT";
+const VERSION_DATE = "2026.06.18";
+
+/* ---------- 1. モード定義 ---------- */
+/* c2: 伝播係数(CFL<0.5) / sub: サブステップ / k: 減衰 / amp: 振幅 / octShift: 和声時音域
+   voice: bell|bowl / partials: 倍音 / decay: 余韻 / send: リバーブ / jitter: 揺らぎ(セント)
+   base,crest,trough: ダーク水面パレット / lbase: ライトテーマの水面色 */
+const MODES = [
+  { id:"calm", name:"CALM", jp:"静",
+    c2:.17, sub:1, k:.0013, amp:1.5, octShift:0, voice:"bell",
+    root:57, scale:[0,3,5,7,10],
+    partials:[[1,1],[2.01,.22]], bellMix:.55, dropMix:.85, splash:.06,
+    decay:2.6, send:.45, interGain:1, jitter:4, shimmer:.012, reflGain:.7,
+    heightGain:110, shadeGain:190,
+    base:[6,10,16], crest:[120,170,205], trough:[18,34,60], lbase:[208,221,231] },
+
+  { id:"glass", name:"GLASS", jp:"硝子",
+    c2:.30, sub:1, k:.0020, amp:1.25, octShift:12, voice:"bell",
+    root:76, scale:[0,2,4,7,9],
+    partials:[[1,1],[2.756,.32],[5.404,.1]], bellMix:.6, dropMix:.2, splash:0,
+    decay:3.4, send:.32, interGain:1.2, jitter:2, shimmer:.008, reflGain:.8,
+    heightGain:130, shadeGain:210,
+    base:[5,9,14], crest:[150,200,228], trough:[14,28,50], lbase:[216,229,237] },
+
+  { id:"storm", name:"STORM", jp:"嵐",
+    c2:.43, sub:2, k:.0034, amp:2.6, octShift:-12, voice:"bell",
+    root:43, scale:[0,3,5,7,10],
+    partials:[[.5,.5],[1,1],[1.5,.28]], bellMix:.8, dropMix:.5, splash:.3,
+    decay:1.3, send:.22, interGain:1, jitter:18, shimmer:.09, reflGain:1.1,
+    heightGain:100, shadeGain:170,
+    base:[7,10,14], crest:[125,152,178], trough:[20,30,48], lbase:[195,205,213] },
+
+  { id:"resonance", name:"RESONANCE", jp:"共鳴",
+    c2:.26, sub:1, k:.0010, amp:1.7, octShift:0, voice:"bell",
+    root:62, scale:[0,2,4,7,9],
+    partials:[[1,1],[2,.25],[3,.12]], bellMix:.8, dropMix:.4, splash:.04,
+    decay:3.0, send:.5, interGain:3.2, jitter:0, shimmer:.01, reflGain:.8,
+    heightGain:115, shadeGain:195,
+    base:[7,8,16], crest:[150,170,222], trough:[22,26,58], lbase:[213,218,234] },
+
+  { id:"zen", name:"ZEN", jp:"禅",
+    c2:.13, sub:1, k:.0008, amp:1.15, octShift:0, voice:"bell",
+    root:50, scale:[0,2,3,7,8],
+    partials:[[1,1],[2.01,.15]], bellMix:.6, dropMix:.6, splash:0,
+    decay:4.5, send:.6, interGain:.7, jitter:3, shimmer:.003, reflGain:.4,
+    heightGain:90, shadeGain:160,
+    base:[4,6,10], crest:[115,140,162], trough:[12,18,30], lbase:[221,225,229] },
+
+  { id:"bowl", name:"BOWL", jp:"低音浴",
+    cap:{ ja:"低音浴", en:"Bass Bath", fr:"Bain de basses" },
+    c2:.15, sub:1, k:.0007, amp:1.4, octShift:0, voice:"bowl", // k下げ=波がより長く深く残る
+    root:44, scale:[0,2,4,7,9],                                 // 音域を下げ重心を低く（超低音はドローンが担う）
+    partials:[[1,1],[2.32,.4],[4.25,.14]], // ガラス鉢の非整数倍音
+    bellMix:.9, dropMix:.3, splash:0,
+    decay:8, send:.55, interGain:1.4, jitter:0, shimmer:.006, reflGain:.5, // 余韻を長く
+    heightGain:100, shadeGain:175,
+    // 深い藍の水底に、静かなゴールドの波頭と暗いエメラルドの谷が蠢く
+    base:[4,10,22], crest:[166,150,98], trough:[8,28,30], lbase:[206,216,214] },
+
+  { id:"xylo", name:"XYLOPHONE", jp:"木琴",
+    c2:.30, sub:1, k:.0020, amp:1.3, octShift:12, voice:"bell",
+    root:69, scale:[0,2,4,7,9],
+    partials:[[1,1],[3,.3],[6.3,.08]], // 木の棒の倍音（第3倍音が強い）
+    bellMix:.9, dropMix:.15, splash:0, knock:.8, // 硬いバチの「コッ」
+    decay:.55, send:.3, interGain:1, jitter:4, shimmer:.01, reflGain:.7,
+    heightGain:105, shadeGain:180,
+    base:[9,9,7], crest:[170,150,110], trough:[26,22,14], lbase:[220,214,200] },
+
+  { id:"xylosoft", name:"XYLO·SOFT", jp:"木琴 柔",
+    c2:.24, sub:1, k:.0016, amp:1.25, octShift:12, voice:"bell",
+    root:64, scale:[0,2,4,7,9],
+    partials:[[1,1],[3,.1]], // 毛糸のバチ: 高次倍音が消える
+    bellMix:.85, dropMix:.2, splash:0, knock:.25, atkOver:.012,
+    decay:.85, send:.4, interGain:1, jitter:3, shimmer:.008, reflGain:.6,
+    heightGain:100, shadeGain:170,
+    base:[9,9,7], crest:[160,145,115], trough:[24,20,14], lbase:[222,217,205] },
+
+  { id:"glocken", name:"GLOCKEN", jp:"鉄琴",
+    c2:.30, sub:1, k:.0020, amp:1.25, octShift:12, voice:"bell",
+    root:76, scale:[0,2,4,7,9],
+    partials:[[1,1],[2.71,.25],[5.15,.12],[8.97,.04]], // 金属棒の倍音
+    bellMix:.95, dropMix:.12, splash:0, knock:.2,
+    decay:3.2, send:.35, interGain:1.2, jitter:2, shimmer:.008, reflGain:.8,
+    heightGain:125, shadeGain:205,
+    base:[6,8,12], crest:[180,195,215], trough:[16,24,38], lbase:[219,227,236] },
+
+  { id:"glocksoft", name:"GLOCK·SOFT", jp:"鉄琴 柔",
+    c2:.20, sub:1, k:.0012, amp:1.2, octShift:12, voice:"bell",
+    root:72, scale:[0,2,4,7,9],
+    partials:[[1,1],[2.71,.08]], // 毛糸のバチ: ヴィブラフォンの灯
+    bellMix:.85, dropMix:.18, splash:0, knock:.05, atkOver:.025,
+    decay:4.2, send:.5, interGain:1.2, jitter:2, shimmer:.006, reflGain:.6,
+    heightGain:110, shadeGain:185,
+    base:[6,8,11], crest:[165,180,200], trough:[15,22,34], lbase:[221,228,235] },
+
+  { id:"pink", name:"PINK", jp:"桃色雑音",
+    c2:.18, sub:1, k:.0012, amp:1.4, octShift:0, voice:"noise", noise:"pink",
+    root:57, scale:[0,2,4,7,9],
+    partials:[[1,1]], bellMix:.5, dropMix:.2, splash:0,
+    decay:2.4, send:.5, interGain:1, jitter:0, shimmer:.01, reflGain:.6,
+    heightGain:105, shadeGain:180,
+    base:[10,7,9], crest:[200,150,165], trough:[28,18,24], lbase:[228,214,218] },
+
+  { id:"brown", name:"BROWN", jp:"褐色雑音",
+    c2:.14, sub:1, k:.0010, amp:1.5, octShift:-12, voice:"noise", noise:"brown",
+    root:45, scale:[0,3,5,7,10],
+    partials:[[1,1]], bellMix:.5, dropMix:.25, splash:0,
+    decay:3.4, send:.55, interGain:1, jitter:0, shimmer:.006, reflGain:.5,
+    heightGain:95, shadeGain:165,
+    base:[9,7,5], crest:[165,135,105], trough:[24,18,12], lbase:[219,210,200] },
+
+  { id:"white", name:"WHITE", jp:"白色雑音",
+    c2:.26, sub:1, k:.0022, amp:1.3, octShift:0, voice:"noise", noise:"white",
+    root:62, scale:[0,2,3,7,8],
+    partials:[[1,1]], bellMix:.5, dropMix:.18, splash:0,
+    decay:1.6, send:.4, interGain:1, jitter:0, shimmer:.014, reflGain:.7,
+    heightGain:110, shadeGain:185,
+    base:[8,9,10], crest:[200,205,210], trough:[22,25,28], lbase:[228,230,232] },
+];
+
+/* ---------- 1b. 環境シーン（SCENE） ---------- */
+/* 音モード(MODES)・PREFSのTHEME(light/dark/system)から独立した「環境映像シーン」層。
+   v017の phys(乗算)/rend(加算)/amb(自律演出) に加え、v018で type/bg/particles/collision を追加し、
+   切り替えた瞬間に別世界（背景・粒子・波頭・衝突FX）へ変わる長尺環境映像へ拡張する。
+   CLASSIC と未指定シーンは従来波動エンジンを使い、v017の見え方を維持（後方互換）。
+   新フィールド: type("surface"|"underwater") / engine{kind,...} / bg{kind} /
+   rend.foam,rend.normal / particles{kind,rate,max} / collision(衝突FXの種類) */
+const SCENES = [
+  { id:"classic", label:{ ja:"CLASSIC — 標準", en:"CLASSIC", fr:"CLASSIQUE" },
+    engine:{ kind:"classic" },
+    phys:{ cMul:1, dampMul:1, reflMul:1 },
+    amb:{ driftX:0, breathAmp:.04, breathSpeed:.00021, dropRate:0, dropSize:.03, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:0, shimmer:0, shimScale:.18, depth:0, glint:0, warm:0, ink:0 } },
+
+  { id:"pond", label:{ ja:"POND — 池", en:"POND", fr:"ÉTANG" },
+    engine:{ kind:"classic" },
+    phys:{ cMul:.82, dampMul:.70, reflMul:.85 },
+    amb:{ driftX:0, breathAmp:.07, breathSpeed:.00015, dropRate:.010, dropSize:.05, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:.30, shimmer:.10, shimScale:.12, depth:.16, glint:.04, warm:.06, ink:0 } },
+
+  { id:"stream", label:{ ja:"STREAM — 流れ", en:"STREAM", fr:"COURANT" },
+    engine:{ kind:"stream", advectX:.030, anisotropyX:1.35, anisotropyY:.75, collisionThreshold:26 },
+    phys:{ cMul:1.05, dampMul:.95, reflMul:.55 },
+    amb:{ driftX:1.1, breathAmp:.03, breathSpeed:.00030, dropRate:.004, dropSize:.03, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:.32, shimmer:.22, shimScale:.22, depth:.06, glint:.12, warm:.08, ink:0 } },
+
+  { id:"rainglass", label:{ ja:"RAIN GLASS — 雨ガラス", en:"RAIN GLASS", fr:"VERRE DE PLUIE" },
+    type:"surface", bg:{ kind:"rain" }, particles:{ kind:"rain", rate:2.4, max:260 }, collision:"raindrop",
+    engine:{ kind:"rain", anisotropyX:.62, anisotropyY:1.55, drip:.028, verticalMemory:.18, collisionThreshold:18 },
+    phys:{ cMul:1.0, dampMul:1.30, reflMul:.42 },
+    amb:{ driftX:.25, breathAmp:.025, breathSpeed:.00040, dropRate:0, dropSize:.03, rainRate:.55, bokehRate:.014, bokehWarm:.30, bokehSize:60, edge:null },
+    rend:{ highlight:.38, shimmer:.24, shimScale:.30, depth:.18, glint:.16, warm:.08, ink:0, foam:.45, normal:.72 } },
+
+  { id:"deep", label:{ ja:"DEEP WATER — 深水", en:"DEEP WATER", fr:"EAU PROFONDE" },
+    type:"surface", bg:{ kind:"deep" }, particles:{ kind:"mote", rate:.5, max:170 }, collision:"lightdust",
+    engine:{ kind:"deep", broad:1.6, undercurrent:.018, collisionThreshold:34 },
+    phys:{ cMul:.55, dampMul:.48, reflMul:.62 },
+    amb:{ driftX:.40, breathAmp:.09, breathSpeed:.00011, dropRate:.006, dropSize:.06, rainRate:0, bokehRate:.018, bokehWarm:.55, bokehSize:78, edge:null },
+    rend:{ highlight:.48, shimmer:.08, shimScale:.13, depth:.68, glint:.18, warm:.32, ink:0, foam:0, normal:.48 } },
+
+  { id:"shore", label:{ ja:"SHORE — 岸辺", en:"SHORE", fr:"RIVAGE" },
+    type:"surface", bg:{ kind:"shore" }, particles:{ kind:"foam", rate:.8, max:150 }, collision:"foam",
+    engine:{ kind:"shore", band:.70, anisotropyX:1.85, anisotropyY:.48, tide:.42, collisionThreshold:20 },
+    phys:{ cMul:.82, dampMul:.82, reflMul:.88 },
+    amb:{ driftX:-.35, breathAmp:.05, breathSpeed:.00018, dropRate:.018, dropSize:.08, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:"bottom" },
+    rend:{ highlight:.52, shimmer:.16, shimScale:.14, depth:.18, glint:.10, warm:.22, ink:0, foam:.92, normal:.82 } },
+
+  { id:"glasswater", label:{ ja:"GLASS WATER — 硝子水面", en:"GLASS WATER", fr:"EAU DE VERRE" },
+    engine:{ kind:"classic" },
+    phys:{ cMul:1.15, dampMul:1.05, reflMul:.90 },
+    amb:{ driftX:.18, breathAmp:.03, breathSpeed:.00035, dropRate:.003, dropSize:.025, rainRate:0, bokehRate:.006, bokehWarm:0, bokehSize:34, edge:null },
+    rend:{ highlight:.60, shimmer:.16, shimScale:.30, depth:.10, glint:.24, warm:0, ink:0 } },
+
+  { id:"ink", label:{ ja:"INK WATER — 墨流し", en:"INK WATER", fr:"ENCRE" },
+    engine:{ kind:"ink", advectX:.018, viscosity:.55, collisionThreshold:30 },
+    phys:{ cMul:.78, dampMul:.50, reflMul:.65 },
+    amb:{ driftX:.50, breathAmp:.04, breathSpeed:.00020, dropRate:.005, dropSize:.05, rainRate:0, bokehRate:0, bokehWarm:0, bokehSize:40, edge:null },
+    rend:{ highlight:.12, shimmer:.08, shimScale:.10, depth:.50, glint:0, warm:0, ink:1 } },
+
+  { id:"silver", label:{ ja:"SILVER CURRENT — 群泳", en:"SILVER CURRENT", fr:"BANC D'ARGENT" },
+    type:"underwater", bg:{ kind:"tank" }, particles:{ kind:"silver", count:540 }, collision:"split",
+    engine:{ kind:"silver", collisionThreshold:999 },
+    phys:{ cMul:.34, dampMul:1.40, reflMul:.20 },
+    amb:{ driftX:.20, breathAmp:.05, breathSpeed:.00012, dropRate:0, dropSize:.04, rainRate:0, bokehRate:.004, bokehWarm:0, bokehSize:64, edge:null },
+    rend:{ highlight:.18, shimmer:.06, shimScale:.14, depth:.46, glint:0, warm:0, ink:0, foam:0, normal:.30 } },
+];
+const scene = () => SCENES[state.sceneIdx] || SCENES[0];
+
+/* ---------- 2. ハーモニー定義（気持ちの良いコード進行の網羅） ---------- */
+/* ドロップダウン = 定番の心地良いコード進行。ASSIST ON ではこの進行へ全てが最適化され、
+   OFF では friction（違和感）がたまに混入する。
+   prog: コード進行（MIDI・列数自由。カノンは8列） / names: コードネーム
+   bpm+swing+pattern: クルーズのグルーヴ（裏拍・バックビート・先取りを骨にする）
+   pattern null はポアソン的ランダム（density=疎密）
+   friction: ASSIST OFF時のみ効く違和感の量（旋律の滑り・刻みのよれ）
+   tweak: 音色メリハリ decay=余韻 / sub=サブ低音 / lp=ローパスHz / det=デチューン(セント) /
+   atk=アタック秒 / drop=水滴倍率 / send=リバーブ倍率 */
+const GENRES = [
+  { id:"free", names:null, prog:null,
+    bpm:60, swing:0, pattern:null, density:1, friction:.08, tweak:{},
+    label:{ ja:"FREE — 素のまま（モード音階）", en:"FREE — bare water", fr:"FREE — eau nue" } },
+
+  { id:"royal", // 王道進行: IVΔ7 → V7 → iii7 → vi7。J-POPの背骨
+    prog:[[53,57,60,64],[55,59,62,65],[52,55,59,62],[57,60,64,67]],
+    names:["FM7","G7","Em7","Am7"],
+    bpm:92, swing:.05,
+    pattern:[ .9,0,0,.3, .6,0,.4,0, .85,0,.3,0, .7,0,.45,.3 ],
+    friction:.08,
+    tweak:{ det:4 },
+    label:{ ja:"王道進行 — IVΔ V iii vi", en:"ROYAL ROAD — IVΔ V iii vi", fr:"ROUTE ROYALE — IVΔ V iii vi" } },
+
+  { id:"canon", // カノン進行: パッヘルベル。8列の長い物語
+    prog:[[48,52,55,60],[55,59,62,67],[57,60,64,69],[52,55,59,64],
+          [53,57,60,65],[48,52,55,64],[53,57,60,65],[55,59,62,67]],
+    names:["C","G","Am","Em","F","C","F","G"],
+    bpm:76, swing:.08,
+    pattern:[ .7,0,.3,0, .5,0,.35,0, .65,0,.3,0, .5,0,.4,0 ],
+    friction:.06,
+    tweak:{ decay:1.1, atk:.012 },
+    label:{ ja:"カノン進行 — パッヘルベル", en:"CANON — Pachelbel", fr:"CANON — Pachelbel" } },
+
+  { id:"komuro", // 小室進行: vi → IV → V → I。疾走する切なさ
+    prog:[[57,60,64,69],[53,57,60,65],[55,59,62,67],[48,52,55,60,64]],
+    names:["Am","F","G","C"],
+    bpm:126, swing:0,
+    pattern:[ .85,0,.5,0, 0,0,.85,0, .5,0,0,.45, 0,0,.8,0 ], // 裏打ちの推進
+    friction:.1,
+    tweak:{ decay:.7, det:8 },
+    label:{ ja:"小室進行 — vi IV V I", en:"KOMURO — vi IV V I", fr:"KOMURO — vi IV V I" } },
+
+  { id:"marunouchi", // 丸の内進行: IVΔ → III7 → vi7 → ii7。都会の艶
+    prog:[[53,57,60,64,67],[52,56,59,62],[57,60,64,67],[55,58,62,65]],
+    names:["Fmaj9","E7","Am7","Gm7"],
+    bpm:98, swing:.14,
+    pattern:[ .8,0,0,.5, 0,.3,.7,0, 0,.5,0,0, .7,0,0,.4 ], // 先取りで前へ倒れる
+    friction:.12,
+    tweak:{ decay:.95, det:6, send:1.1 },
+    label:{ ja:"丸の内進行 — シティポップの艶", en:"MARUNOUCHI — city sheen", fr:"MARUNOUCHI — éclat urbain" } },
+
+  { id:"axis", // アクシス進行: I → V → vi → IV。世界中のヒットの土台
+    prog:[[48,52,55,60],[55,59,62,67],[57,60,64,69],[53,57,60,65]],
+    names:["C","G","Am","F"],
+    bpm:116, swing:0,
+    pattern:[ .9,0,0,.6, 0,0,.8,0, 0,.55,0,0, .8,0,.4,0 ],
+    friction:.09,
+    tweak:{ decay:.8, drop:1.2 },
+    label:{ ja:"アクシス進行 — I V vi IV", en:"AXIS — I V vi IV", fr:"AXE — I V vi IV" } },
+
+  { id:"fifties", // 50s進行: I → vi → IV → V。ドゥーワップの揺りかご
+    prog:[[48,52,55,60],[57,60,64,67],[53,57,60,65],[55,59,62,67]],
+    names:["C","Am","F","G"],
+    bpm:68, swing:.22,
+    pattern:[ .7,0,0,0, 0,0,.5,0, .6,0,0,.35, 0,.4,0,0 ],
+    friction:.08,
+    tweak:{ decay:1.2, lp:2800, atk:.015 },
+    label:{ ja:"50s進行 — I vi IV V", en:"50s — I vi IV V", fr:"ANNÉES 50 — I vi IV V" } },
+
+  { id:"twofive", // ツーファイブワン: ii9 → V13 → IΔ9 → vi9。ジャズの呼吸
+    prog:[[50,53,57,60,64],[55,59,62,65,69],[48,52,55,59,62],[57,60,64,67,71]],
+    names:["Dm9","G13","Cmaj9","Am9"],
+    bpm:84, swing:.3,
+    pattern:[ .8,0,0,.4, 0,.5,0,0, .7,0,.3,0, 0,.5,0,.3 ], // シンコペーション
+    friction:.12,
+    tweak:{ decay:.9, lp:2200, det:5 },
+    label:{ ja:"ツーファイブワン — ii V I", en:"II–V–I — jazz cadence", fr:"II–V–I — cadence jazz" } },
+
+  { id:"circle", // 循環進行: vi → ii → V → I。回り続ける階段
+    prog:[[57,60,64,67],[50,53,57,60],[55,59,62,65],[48,52,55,59]],
+    names:["Am7","Dm7","G7","Cmaj7"],
+    bpm:96, swing:.1,
+    pattern:[ 0,0,.6,0, .8,0,0,.4, 0,.5,0,0, .8,0,.3,0 ], // 1拍目を置かない勇気
+    friction:.1,
+    tweak:{ decay:1.05, atk:.015 },
+    label:{ ja:"循環進行 — vi ii V I", en:"CIRCLE — vi ii V I", fr:"CYCLE — vi ii V I" } },
+
+  { id:"sus", // サス進行: 解決を保留したまま漂う
+    prog:[[48,50,55,62],[50,52,57,64],[53,55,60,67],[55,60,62,67]],
+    names:["Csus2","Dsus2","Fsus2","Gsus4"],
+    bpm:48, swing:0, pattern:null, density:.6, friction:.14,
+    tweak:{ decay:1.7, send:1.35, atk:.05 },
+    label:{ ja:"サス進行 — 浮遊", en:"SUS — floating", fr:"SUS — flottant" } },
+
+  { id:"minor9", // マイナーナインス: 深く沈む循環
+    prog:[[48,51,55,58,62],[53,56,60,63,67],[56,60,63,67],[58,62,65,68,72]],
+    names:["Cm9","Fm9","Abmaj7","Bb9"],
+    bpm:118, swing:0,
+    pattern:[ .9,0,0,0, .35,0,.65,0, 0,0,.9,0, .35,0,.65,.3 ],
+    friction:.09,
+    tweak:{ decay:.8, sub:.7, lp:2800 },
+    label:{ ja:"マイナーナインス — 深海", en:"MINOR 9TH — deep", fr:"NEUVIÈME MINEURE — profond" } },
+];
+
+/* ---------- 3. 多言語テキスト ---------- */
+const I18N = {
+  ja: {
+    hint: "TOUCH THE WATER · 水面に触れてください",
+    modeNormalLabel: "NORMAL", modeBathLabel: "音浴",
+    confirmToBath: "音浴（BATH）モードに切り替えますか？", confirmFromBath: "音浴モードを終了しますか？（持続音が止まります）",
+    themes: ["ライト", "ダーク", "システム"],
+    close: "閉じる",
+    histAll: "すべての更新履歴を見る",
+    histLess: "簡易表示にもどる",
+    brandSub: "波紋の庭 — GENERATIVE WATER INSTRUMENT",
+    cruiseEnd: "クルーズ終了 — おやすみなさい",
+    hist: [
+      ["v019", "SCENEごとに波紋エンジンを分岐。RAIN GLASSは円ではなく縦に滴る雨窓波、SHOREは画面下から押し寄せる帯状の岸波、DEEP WATERは広く遅い深水波、SILVER CURRENTは波紋より銀の群泳流れ場を主役にした。タップ時の注入形状もシーンごとに変わり、波面エネルギーの局所最大から泡・光・群れ分離の衝突FXを出す。SCENE切替時は水面・粒子・魚群を再シードし、同じ水面の色替えではなく別映像へ切り替わる方向を強めた。音は不変。"],
+      ["v018", "SURFACE を「環境シーン(SCENE)」へ拡張。RAIN GLASS（雨窓）・SHORE（浅瀬）・DEEP WATER（深海）に固有の背景・粒子（雨・泡・漂う光）・波の衝突演出が加わり、選んだ瞬間に別の映像へ切り替わる。新たに SILVER CURRENT（群泳）を追加。銀の魚の群れが渦を巻いて流れ、触れると割れて数秒で戻る、水族館のような水中シーン。30分〜2時間流せる環境映像を目指した拡張で、音には触れていない。"],
+      ["v017", "水面テーマ SURFACE を新設。WATER の下のメニューで、CLASSIC（標準）に POND・STREAM・RAIN GLASS・DEEP WATER・SHORE・GLASS WATER・INK WATER の7つを加えた水面の質感を選べる。各テーマは波の速さ・減衰・反射と、さざ波・煌めき・深さ・前ボケ・暖色寒色などの見え方、雨粒や自然な雫といった自律的な動きをまとめて切り替える。音のモードや表示テーマ（ライト/ダーク）とは独立し、選んだ水面は次回も保存される。"],
+      ["v016", "BOWLを「音浴（BATH）」グループへ移動。これまでノイズ3色（ホワイト/ピンク/ブラウン）だった持続音の仲間に BOWL（低音浴）を加え、NORMAL とは性格の違う「音浴（BATH）」としてまとめた。NORMAL から音浴へ切り替えるときは必ず確認し、音量を一律で約10%に絞り、シャッフルは NORMAL の中だけで回る（音浴は選ばれない）。UIの「NOISE」表記を「音浴（英:BATH／仏:BAIN）」に改名し、BOWL は「BOWL — 低音浴」に。ripple-gardenタブを再構成し、最初に NORMAL と音浴の2モードと、音浴のサウンドマスキング（生活音や話し声を覆う）効用を説明。journal に、シンギングボウルの落ち着き効果について信頼度の高い研究からの傾向（脳波・自律神経・不安低下など、断定はしない）を追記した。"],
+      ["v015", "BOWLモードを「お腹に響く重低音サウンドバス」へ進化。水面に触れると超低音のドローンがふわりと立ち上がり、約10秒持続してから約10秒かけて揺らぎながら静かに消える。打音は長い余韻とマレットの芯を持ち、デチューンとLFOで濃密なうねりが生まれる。TONE（旧NOISE TONE）を全モード共通の3バンドEQにして常時表示し、BASS で重低音を音割れ寸前まで追い込めるように。BOWLの音域を下げ水面をより深く長く波打たせ、色を深い藍・エメラルド・ゴールドへ。ヘッドホン推奨。"],
+      ["v014", "ripple-gardenタブの「使い方」を現行版に刷新。NORMAL/NOISEの切替、プレイヤー型CRUISE（再生・停止・リピート・シャッフル・次の曲・TIME・VOLUME）、モードに連動するHARMONY/NOISE TONE、低電力のWATER、テーマ・言語の切替まで、いまの操作に合わせて書き直した。about siropには、情報を種のように寝かせAIと育てる「外部記憶OS」と「触れる小宇宙」という考え方をコンパクトに添えた。"],
+      ["v013", "細部の仕上げ。更新履歴の全件表示に「簡易表示にもどる」を追加し、5件⇄全件をトグルで往復できるように。journalとripple-gardenの読み物は上下フェードを強め、ヘッダー・フッターの直前で本文が完全に消えるよう調整。about内の初回実装クレジットを更新。"],
+      ["v012", "細部の調整と不具合修正。クルーズ＋シャッフル中、モードが自動で入れ替わるたびに確認ダイアログが繰り返し出てしまう不具合を修正（NORMAL↔NOISEの境界を越える時だけ確認し、グループ内の切替や自動シャッフルでは出さない）。GLASSの音量をさらに控えめに微調整。更新履歴の全件表示をカード内でスクロールできるようにして、上下に見切れて閉じられなくなる不具合を解消。journalとripple-gardenの読み物は上下がやわらかくフェードし、ヘッダー・フッターと本文が重ならないよう整えた。"],
+      ["v011", "パネルを刷新。CRUISEをプレイヤー化（▶⇄■・次の曲・リピート・シャッフルのアイコン、VOLUMEを同居）し、HARMONYとNOISE TONEをモードに連動して入れ替え表示。WATERをトグルにして低電力モード（OFFで動的グラフィックと反射・干渉・きらめきを止め、音は継続）。GLASSの音量を控えめに調整し、ripple-gardenタブにこの庭から生まれた自作曲のおまけを追加。"],
+      ["v010", "MODEをNORMAL / NOISEの2グループとドロップダウンへ再編。音が鳴っている時だけグループ境界の切替を確認し、NOISE中はSHUFFLEを自動で止めて無効化、NORMALへ戻ると直前状態を復元。iPhoneメニューの下端スクロールとsafe-areaに対応し、ノイズ中の音程付き反射音も停止。"],
+      ["v009", "長時間運用の安定化。発音が終わった声部のオーディオノードをリバーブ残響ぶん待ってから解放し、長時間でページが重く・固まる一因（ノードの蓄積）を防止。さらに既定120分ごとに自動クリーンアップを実行し、フェードアウト→掃除→フェードインで聴感を途切れさせず波面と波紋をリセット。"],
+      ["v008", "ノイズ3モードに持続ノイズベッドを追加。CRUISE中にブラウン/ピンク/ホワイトを選ぶと連続ドローンが鳴り、波紋ごとの減衰音だけだった頃より音圧が出る。高・中・低の3バンドつまみ（NOISE TONE）でトーン調整、ブラウンには48Hzのサブ低音を補強。通常音→ノイズで音量を約10%へ自動で絞り爆音を防止、シャッフルはノイズを選ばない、ノイズ3種の使い方をripple-gardenタブに追記。集中・睡眠・不安鎮静のための音響強化。"],
+      ["v007", "v006の音響挙動を保持したまま、版日付・README・入口・仕様書・公開導線を現在地へ同期する正常化版。"],
+      ["v006", "ASSIST再定義（ON=心地良いコードへ完全最適化 / OFF=違和感がたまに混入）、定番コード進行10種、木琴・鉄琴・ノイズ3色の新モード、SUSTAIN、更新履歴の全件表示、銘の3言語化、ファビコン。"],
+      ["v005", "一般公開。OGPサムネイル、README、GitHub Pages。"],
+      ["v004", "ハーモニーを情景名へ刷新、進行とグルーヴを裏拍文化へ再設計、反射音のコード吸着、違和感の匙加減。"],
+      ["v003", "自動クルーズ（5〜120分・∞・シャッフル）、フェード、3言語、テーマ、journal / ripple-garden タブ。"],
+      ["v002", "BOWLモード、コード進行ハーモニー、スペース奏法と弓奏ストローク、心地良さアシスト。"],
+      ["v001", "波動方程式の水面、5モード、イベント駆動のWeb Audio、WAV録音。"],
+    ],
+    journal: `
+<h2>journal — 水音と環境音の小さな研究</h2>
+<p class="lead">なぜ人は、雨の音や川のせせらぎを何時間も流しておくのだろう。ripple-garden の背景にある「鳴り続ける水」の文化を、短く辿る。</p>
+<h2>ノイズには色がある</h2>
+<p>すべての周波数を均等に含む音はホワイトノイズと呼ばれる。低い周波数ほど強くなるよう傾けたものがピンクノイズ、さらに深く沈めたものがブラウンノイズ。滝や豪雨、飛行機の機内のような重く柔らかい響きはブラウンノイズに近い。ripple-garden の BOWL モードは、このブラウンノイズを高い共鳴フィルタに通して「擦られたガラスの鉢」の声を作っている。</p>
+<h2>環境音はなぜ心地よいのか</h2>
+<p>一定の環境音が突発的な物音を覆い隠すこと（マスキング）で、集中や入眠を保ちやすくなると報告されている。また自然音の多くは、規則と不規則のあいだ——いわゆる 1/f ゆらぎ——を持ち、予測できそうでできない刺激が注意をやわらかく解放するとも言われる。効果には個人差があり、万能ではない。それでも「水の音で部屋を満たす」という習慣が世界中にあることは確かだ。</p>
+<h2>クリスタルボウルの音と落ち着き ― 研究では</h2>
+<p>シンギングボウル（金属製・クリスタル製）の音とリラックスの関係は、査読論文やシステマティックレビューでも調べられている。販売目的のサイトも多く玉石混交だが、信頼度の高い学術ソースに限ると、いくつかの方向がくり返し報告されている。あくまで研究上の傾向で、効果には個人差があり、医学的な助言ではない。</p>
+<ul>
+<li><strong>脳波のうつろい</strong> — 音の干渉が生む低い「うなり」が、覚醒・緊張に関わる速い脳波を抑え、深いリラックスに関わる遅い脳波を増やす方向が報告されている。</li>
+<li><strong>自律神経のかたむき</strong> — 心拍変動の解析で、副交感神経（休息側）の指標が増え、安静時の心拍が下がる傾向が複数の研究で示されている。</li>
+<li><strong>不安・緊張の低下</strong> — 対照試験や観察研究で、状態不安や気分のスコアが改善したという報告がある。</li>
+<li><strong>努力のいらない受動性</strong> — 意識的な集中を要する弛緩法と違い、聴くだけで受動的にリラックス反応が起きやすいと考えられている。</li>
+</ul>
+<p class="note">※ ripple-garden の音はボウルそのものではなく、その重低音に着想した合成音です。上記は一般的な研究傾向であり、効果を保証するものではありません。</p>
+<h2>水音のクロニクル</h2>
+<ul>
+<li>江戸期 — 日本庭園の鹿威しと水琴窟。水滴の反響を愛でる装置が園芸の中に生まれる。</li>
+<li>1917 — サティ「家具の音楽」。聴くためでなく、そこに在るための音楽という発想。</li>
+<li>1978 — ブライアン・イーノ『Music for Airports』。アンビエントという名前が与えられる。</li>
+<li>1980年代 — 日本の環境音楽。吉村弘らが空間のための静かな音を作る。</li>
+<li>2010年代 — YouTubeに8時間の雨音、10時間の波音。長尺環境音が眠りと作業の友になる。</li>
+<li>2017 — lo-fi hip hop radio。勉強する少女のループとともに、流しっぱなしの音楽が日常になる。</li>
+</ul>
+<h2>長尺という発明</h2>
+<p>環境音の動画は「終わらないこと」に価値がある。5分の美しさより、90分の気配。ripple-garden のクルーズモードはその自家生成版で、5分から120分、あるいは無限に、水面がひとりで演奏を続ける。シャッフルを灯せば、モードと進行が頃合いでゆっくり入れ替わる。</p>
+<p class="note">※ 音量は控えめに。環境音の効果には個人差があります。これは医学的な助言ではなく、文化の話。</p>`,
+    about: `
+<h2>ripple-garden とは</h2>
+<p class="lead">夜の水面をひとつの楽器にした庭。波は本物の物理（波動方程式）で広がり、音はその出来事——着水・反射・干渉——から生まれる。触れる環境音楽。</p>
+<h2>ふたつのモード ― NORMAL と 音浴（BATH）</h2>
+<p>この庭にはふたつの性格があります。<strong>NORMAL</strong> は、水面に触れて音と波紋を奏でる楽器。<strong>音浴（BATH）</strong> は、途切れない音の層に身を浸して過ごすモードです。</p>
+<p>音浴（BATH）は、集中やリラックスのためだけのものではありません。一定の音が<strong>生活音・話し声・外の工事の喧噪などをやわらかく覆い隠す</strong>はたらき（サウンドマスキング）を持ちます。不安やイライラからくる動悸に意識が持っていかれそうなとき、その音の層に身をあずけると、気がそれて少し和らぐことがあります（<strong>感じ方には個人差があります</strong>）。</p>
+<h2>使い方</h2>
+<ul>
+<li>クリック / タップ — 一滴。縦の位置が音高、横の位置が音の左右とコードを決める。</li>
+<li>ドラッグ — 水面を撫でる。スペースキー — ポインタの位置に一滴。連打でリズムが刻める。</li>
+<li>スペースを押し込みながらポインタを動かす — 弓奏。分散和音が移動方向に沿って歩く。</li>
+<li>MODE — NORMAL と 音浴（BATH）を切り替え、それぞれのリストから選ぶ。NORMAL は CALM / GLASS / STORM / RESONANCE / ZEN と木琴・鉄琴（硬いバチ・毛糸のバチ）。音浴（BATH）は BOWL（低音浴）／ホワイト／ピンク／ブラウン。</li>
+<li>CRUISE — 自動演奏のプレイヤー。▶ で再生・■ で停止、リピート（∞ループ）、シャッフル、そのとなりの「次の曲」、TIME（5〜120分）と VOLUME を備える。環境音動画のように流しておける。</li>
+<li>HARMONY — NORMAL のときのコード進行（王道・カノン・小室…）。ASSIST ON で反射音まで心地良く最適化、OFF で違和感がたまに混じる。SUSTAIN でロングトーン。</li>
+<li>TONE — 音の低・中・高を整える3バンド。常に表示され、NORMAL では全体の音に、NOISE では持続ノイズに効く。とくに BASS は BOWL の重低音を探る要のつまみ。</li>
+<li>WATER — 動く水面の表示トグル。OFF にすると描画と反射・干渉・きらめきを止める低電力モード（音は鳴り続ける）。出先やバッテリー節約に。LIFE / SPEED / REFLECT で水面の質感を整える。</li>
+<li>REC → STOP → WAV — 演奏を16bitステレオWAVで保存。SUNO などの素材にどうぞ。CLEAR で波面をリセット。</li>
+<li>テーマ / 言語 — 画面下の PREFS で、ライト・ダーク・システム、日本語・English・Français を切り替え。</li>
+</ul>
+<h2>音浴（BATH）の低音浴 ― BOWL</h2>
+<p>BOWL（低音浴）は、<strong>アルケミークリスタルボウルの重低音だけを抽出した低音浴</strong>です。きらびやかな高い倍音をそぎ落とし、お腹に響く超低音にしぼり込んでいます。ひとつひとつの仕組みを知ると、より深く沈み込めます。</p>
+<ul>
+<li><strong>触れると超低音が立ち上がる</strong> — 水面に触れた瞬間からふわりと低音のドローンが立ち上がり、0.5秒ほどでリッチな響きになります。約10秒そのまま持続し、そこから約10秒かけて、ゆっくりした揺らぎ（うねり）を伴いながら静かに消えていきます。</li>
+<li><strong>長い余韻と芯のある打音</strong> — 触れた音は長く美しい余韻を引きます。鳴り始めには、マレットで「コン…」と叩いたような芯がほんの一瞬だけ混じります。</li>
+<li><strong>濃密なうねり</strong> — わずかに高さをずらした複数の低音が重なり、「ぶわんぶわん」「シュワシュワ」とした空気のうねりを生みます。ヘッドホンだと左右に広がって感じられます。</li>
+<li><strong>TONE の BASS で重低音を追い込む</strong> — TONE の BASS を上げるほど低音が増します。<strong>上げすぎると音が割れて「バリバリ」とノイズになります。</strong>割れる手前のいちばん豊かに鳴る一点（スイートスポット）を、BASS をゆっくり動かしながら探してください。</li>
+</ul>
+<p class="note">※ この超低音は小さなスピーカーやスマホの内蔵スピーカーではほとんど鳴りません。<strong>ヘッドホンやサブウーファーのある環境を強くおすすめします。</strong>低音を限界まで追い込んでいるぶん音割れしやすいので、音量は控えめから始めてください。</p>
+<h2>音浴（BATH）の3つのノイズ</h2>
+<p>ブラウン・ピンク・ホワイトの3つは、波紋を奏でる楽器というより<strong>持続する環境音</strong>。音浴（BATH）で選んで CRUISE の START を押すと、途切れない音の層が流れ続け、生活音をやわらかく覆います。TONE の低・中・高つまみで、自分の夜に合わせて音色を整えられる。</p>
+<ul>
+<li><strong>WHITE（ホワイト）</strong> — 全周波数を均等に含む「シャー」。集中と、外の物音の遮断に。慣れると眠りにも。刺さると感じたら TREBLE を下げて。</li>
+<li><strong>PINK（ピンク）</strong> — 低い方へ傾いた「ザー」。雨や滝のような自然な厚み。ホワイトより柔らかく、集中・遮断・睡眠に。</li>
+<li><strong>BROWN（ブラウン）</strong> — 低音の塊「ゴー」。包まれるような重低音で、集中・睡眠に加えて、不安や動悸が気になるときに気持ちを落ち着けてくれる。BASS つまみを上げると 48Hz のサブ低音と合わさって芯が出る（ヘッドホン推奨）。</li>
+</ul>
+<p class="note">※ ノイズを選ぶと音量は自動で約10%まで絞られます（通常モードからの音量差で驚かないため）。そこから VOLUME で好みに上げてください。シャッフルではノイズは選ばれません。効果には個人差があります。</p>
+<h2>おまけ — この庭から生まれた曲</h2>
+<p>ripple-garden で録音した音から生まれた曲です♪</p>
+<p class="note">Where Ripples Wake — 水底で目覚める ／ 歌詞: sirop ／ 音楽: SUNO</p>
+<iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
+<h2>about sirop</h2>
+<p>sirop（シロップ）。外部記憶OSを育てながら、4つのAIエージェント（コウ/Codex・ソル/Cursor・クー/Claude Code・ラビ/Antigravity）と小さなwebの遊び場を作っている。単一HTMLで動く「触れる小宇宙」シリーズ — gem-cosmos、shima-shima、そして ripple-garden。本作の初回実装はクー/Claude Fable 5 (Ultracode)。</p>
+<p>この庭は、ひとつの考え方から生まれている。情報やひらめきを使い捨てにせず、種のように蒔いて寝かせ、AIと一緒に育てていく——「外部記憶OS」という試み。答えを急がず問いのまま置いておくこと、敵や怒りを燃料にせず静かな場所を守ること、知識を読むだけのものではなく<strong>触れて遊べる小宇宙</strong>に変えること。ripple-garden は、その考え方が手で触れられる形になった小さな結晶のひとつ。</p>
+<p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
+  },
+  en: {
+    hint: "TOUCH THE WATER",
+    modeNormalLabel: "NORMAL", modeBathLabel: "BATH",
+    confirmToBath: "Switch to BATH mode?", confirmFromBath: "Leave BATH mode? (the sustained sound stops)",
+    themes: ["light", "dark", "system"],
+    close: "close",
+    histAll: "view full history",
+    histLess: "show recent only",
+    brandSub: "GARDEN OF RIPPLES — GENERATIVE WATER INSTRUMENT",
+    cruiseEnd: "cruise ended — good night",
+    hist: [
+      ["v019", "Scene-specific ripple engines. RAIN GLASS no longer behaves like a round pond ripple: it drips vertically like rain on glass. SHORE pushes broad bands of surf upward from the bottom. DEEP WATER uses slower, wider pressure waves. SILVER CURRENT makes the fish-school current the main visual instead of the surface ripple. Touch impulses now change shape per scene, and collision FX come from local wave-field energy peaks — foam, light dust, or school splitting. Switching SCENE reseeds the water, particles and fish so it feels closer to changing the picture, not recoloring the same surface. Sound is unchanged."],
+      ["v018", "SURFACE grows into ambient SCENEs. RAIN GLASS (a rainy window), SHORE (a shallow beach) and DEEP WATER (the deep sea) each gain their own background, particles (rain, foam, drifting light) and wave-collision effects, so the picture changes the moment you switch. A new SILVER CURRENT scene arrives too — a school of silver fish circling in a current that scatters when you touch it and re-forms over a few seconds, like an aquarium. An expansion aimed at long-form ambient video; the sound is untouched."],
+      ["v017", "New SURFACE water themes. A menu under WATER lets you choose the feel of the water — CLASSIC plus POND, STREAM, RAIN GLASS, DEEP WATER, SHORE, GLASS WATER and INK WATER. Each theme reshapes wave speed, damping and reflection together with shimmer, glints, depth, foreground bokeh and warm/cool light, plus gentle autonomous motion like raindrops and stray droplets. It is independent of the sound mode and the light/dark theme, and your choice is remembered."],
+      ["v016", "BOWL moves into the BATH group. The sustained sounds — once just white/pink/brown noise — now include BOWL (bass bath) under one umbrella, BATH, set apart from NORMAL. Crossing from NORMAL to BATH always asks first, dips the volume to ~10%, and shuffle now stays within NORMAL only (BATH is never picked). The UI label \"NOISE\" is renamed BATH (FR: BAIN), and BOWL becomes \"BOWL — Bass Bath\". The ripple-garden tab is restructured to open with the two modes and BATH's sound-masking benefit (covering household noise and voices), and the journal gains a summary of what higher-trust research reports about singing bowls and calm (brainwaves, autonomic balance, lower anxiety — without overclaiming)."],
+      ["v015", "BOWL grows into a heavy-bass sound bath. Touch the water and a sub-bass drone swells in, holds for about ten seconds, then fades over another ten with a slow wavering. Each touch rings with a long tail and a mallet-like core, while detuning and an LFO create a dense undulation. TONE (formerly NOISE TONE) becomes a three-band EQ shared by every mode, always visible, so BASS can push the low end right up to the edge of distortion. BOWL's range drops, the water ripples deeper and longer, and its palette shifts to deep indigo, emerald and gold. Headphones recommended."],
+      ["v014", "Rewrote the “how to play” section in the ripple-garden tab to match the current build: the NORMAL/NOISE switch, the player-style CRUISE (play, stop, repeat, shuffle, next, TIME, VOLUME), the mode-linked HARMONY / NOISE TONE, the low-power WATER toggle, and theme/language. About sirop now carries, in brief, the idea behind it all — an “external-memory OS” that sows information like seeds and grows it with AI, and turning knowledge into little worlds you can touch."],
+      ["v013", "Finishing touches. The full history view gains a “show recent only” toggle, so you can collapse it back to five. The journal and ripple-garden readers now fade harder at top and bottom, so text vanishes completely just before the header and footer. Updated the first-implementation credit in the about section."],
+      ["v012", "Polish and fixes. Fixed a bug where the confirm dialog kept popping up every time the mode auto-switched during cruise + shuffle (it now asks only when crossing the NORMAL↔NOISE boundary, never on in-group changes or automatic shuffles). GLASS is toned down a touch further. The full history view now scrolls inside its card, so it can no longer overflow off-screen and trap you with no way to close it. And the journal and ripple-garden readers now fade softly at top and bottom, so the text no longer collides with the header and footer."],
+      ["v011", "Panel overhaul. CRUISE becomes a player (play⇄stop, next, repeat, shuffle icons, with VOLUME alongside); HARMONY and NOISE TONE swap by mode. WATER is now a toggle that doubles as a low-power mode (off stops the visuals plus reflections, interference and shimmer while the sound keeps playing). GLASS is toned down, and the ripple-garden tab gains a bonus track born from this garden."],
+      ["v010", "MODE is now split into NORMAL / NOISE groups with compact dropdowns. Crossing the boundary asks only while sound is active; NOISE automatically pauses and disables SHUFFLE, then restores its previous state on return to NORMAL. The iPhone menu now reaches its safe-area bottom, and pitched reflections stay silent in noise modes."],
+      ["v009", "Long-session stability. Finished voices now release their audio nodes (after the reverb tail) instead of piling up on the output — a likely cause of the page slowing or freezing over hours. And every 120 minutes by default a quiet auto-cleanup runs: fade out, sweep the wave field and ripples, fade back in, so it resets without breaking the sound."],
+      ["v008", "Sustained noise bed added to the three noise modes. During CRUISE, choosing brown/pink/white now plays a continuous drone with real body — previously only per-ripple decaying tones, which felt thin. A three-band NOISE TONE control (bass/mid/treble) shapes it, and brown gains a faint 48 Hz sub-bass. Switching into a noise mode auto-dips the volume to ~10% to prevent a startling jump, shuffle no longer picks noise modes, and the ripple-garden tab now explains how to use the three noises. Tuned for focus, sleep and easing anxiety."],
+      ["v007", "Documentation normalisation release: preserves v006 audio behaviour while synchronising the release date, README, project entry, specification and public routes."],
+      ["v006", "ASSIST reframed (ON = fully optimised to pleasant chords / OFF = occasional friction), ten classic progressions, xylophone/glockenspiel/noise modes, SUSTAIN, full history view, localised brand, favicon."],
+      ["v005", "Public release. OGP thumbnail, README, GitHub Pages."],
+      ["v004", "Scene-named harmony, off-beat grooves, chord-snapped reflections, a pinch of friction."],
+      ["v003", "Auto-cruise (5–120 min, ∞, shuffle), fades, three languages, themes, journal & ripple-garden tabs."],
+      ["v002", "BOWL mode, chord-progression harmony, spacebar play & bow strokes, comfort assist."],
+      ["v001", "Wave-equation water, five modes, event-driven Web Audio, WAV recording."],
+    ],
+    journal: `
+<h2>journal — small notes on water & ambient sound</h2>
+<p class="lead">Why do we leave rain sounds playing for hours? A short walk through the culture of endlessly sounding water behind ripple-garden.</p>
+<h2>Noise has colours</h2>
+<p>Sound containing all frequencies equally is white noise. Tilt the spectrum toward the lows and you get pink noise; sink it deeper and it becomes brown noise — the heavy, soft wash of waterfalls, downpours and aircraft cabins. The BOWL mode of ripple-garden feeds brown noise through high-resonance filters to create the voice of a rubbed glass bowl.</p>
+<h2>Why ambient sound feels good</h2>
+<p>Steady ambient sound is reported to mask sudden noises, which can help focus and sleep. Many natural sounds also live between order and chance — the so-called 1/f fluctuation — gently releasing attention. Effects vary from person to person; nothing here is universal. Yet the habit of filling a room with water sound exists everywhere.</p>
+<h2>Singing bowls and calm — what research says</h2>
+<p>The link between singing-bowl sound (metal and crystal) and relaxation has been studied in peer-reviewed papers and systematic reviews. Many sources are sales-driven, so quality varies; but limiting to higher-trust academic sources, a few directions are reported repeatedly. These are research tendencies only — effects vary between people, and none of this is medical advice.</p>
+<ul>
+<li><strong>Shifting brainwaves</strong> — the low "beats" from acoustic interference are reported to reduce the faster waves tied to arousal and tension while increasing the slower waves tied to deep relaxation.</li>
+<li><strong>A tilt in the autonomic balance</strong> — heart-rate-variability analyses show parasympathetic (rest) indices rising and resting heart rate falling across several studies.</li>
+<li><strong>Lower anxiety and tension</strong> — controlled and observational studies report improved state-anxiety and mood scores.</li>
+<li><strong>Effortless, passive relaxation</strong> — unlike methods that need conscious focus, simply listening seems to trigger a relaxation response passively.</li>
+</ul>
+<p class="note">※ ripple-garden's sound is not an actual bowl but a synthesis inspired by its deep bass. The above are general research tendencies and do not guarantee any effect.</p>
+<h2>A chronicle of water sound</h2>
+<ul>
+<li>Edo period — shishi-odoshi and suikinkutsu in Japanese gardens: devices built to admire the echo of a drop.</li>
+<li>1917 — Satie's “furniture music”: music to exist in, not to listen to.</li>
+<li>1978 — Brian Eno, <i>Music for Airports</i>. Ambient gets its name.</li>
+<li>1980s — Japanese kankyō ongaku; Hiroshi Yoshimura and quiet music for spaces.</li>
+<li>2010s — eight-hour rain, ten-hour waves on YouTube. Long-form ambience becomes a companion.</li>
+<li>2017 — lo-fi hip hop radio: music that never stops becomes everyday furniture.</li>
+</ul>
+<h2>The invention of length</h2>
+<p>Ambient videos are valuable because they do not end. Not five beautiful minutes, but ninety minutes of presence. Cruise mode is a self-generating version of that: from five minutes to two hours, or forever, the water plays itself. Light up shuffle and modes and progressions slowly trade places.</p>
+<p class="note">※ Keep the volume low. Effects vary; this is cultural history, not medical advice.</p>`,
+    about: `
+<h2>what is ripple-garden</h2>
+<p class="lead">A garden where a night water surface becomes an instrument. Waves spread by real physics (the wave equation); sound is born from its events — drops, reflections, interferences. Ambient music you can touch.</p>
+<h2>two modes — NORMAL and BATH</h2>
+<p>This garden has two characters. <strong>NORMAL</strong> is an instrument you play by touching the water for sound and ripples. <strong>BATH</strong> is a mode for soaking in an unbroken layer of sound.</p>
+<p>BATH isn't only for focus and relaxation. A steady sound <strong>softly masks household noise, voices and outside construction din</strong> (sound masking). When anxiety or irritation pulls your attention toward a racing heartbeat, letting yourself sink into that layer of sound can draw your attention away and ease it a little (<strong>this varies from person to person</strong>).</p>
+<h2>how to play</h2>
+<ul>
+<li>Click / tap — one drop. Vertical position sets pitch, horizontal sets pan and chord.</li>
+<li>Drag — stroke the water. Spacebar — a drop at the pointer; tap it rhythmically.</li>
+<li>Hold space and move the pointer — bowing: an arpeggio walks along your movement.</li>
+<li>MODE — switch between NORMAL and BATH, then pick from each list. NORMAL has CALM / GLASS / STORM / RESONANCE / ZEN plus xylophone and glockenspiel (hard & yarn mallets). BATH has BOWL (bass bath) / white / pink / brown.</li>
+<li>CRUISE — a self-playing transport: ▶ play, ■ stop, repeat (∞ loop), shuffle, a “next” button beside it, plus TIME (5–120 min) and VOLUME. Leave it on like an ambient video.</li>
+<li>HARMONY — the chord progression in NORMAL (royal road, canon, 50s…). ASSIST ON optimises everything — even reflections — toward pleasant chords, OFF lets a little friction in; SUSTAIN for long tones.</li>
+<li>TONE — a three-band bass / mid / treble shaper, always visible. In NORMAL it shapes the whole sound, in NOISE the sustained noise. BASS in particular is the key to dialing in BOWL's deep low end.</li>
+<li>WATER — a toggle for the moving surface. Turn it OFF for a low-power mode that stops the visuals plus reflections, interference and shimmer (the sound keeps playing) — handy on the go or to save battery. LIFE / SPEED / REFLECT tune the water.</li>
+<li>REC → STOP → WAV — save your take as 16-bit stereo WAV, ready for SUNO and friends. CLEAR resets the surface.</li>
+<li>Theme / language — at the bottom in PREFS: light, dark, system, and 日本語 / English / Français.</li>
+</ul>
+<h2>BATH's bass bath — BOWL</h2>
+<p>BOWL (bass bath) is <strong>only the deep bass of an alchemy crystal singing bowl, extracted</strong>. The bright high overtones are stripped away, leaving a sub-bass you feel in your body. Knowing each piece lets you sink in deeper.</p>
+<ul>
+<li><strong>A sub-bass swells when you touch</strong> — the moment you touch the water, a low drone fades in and turns rich within about half a second. It holds for roughly ten seconds, then fades away over another ten with a slow, wavering shimmer.</li>
+<li><strong>Long tails with a core</strong> — each touch rings with a long, beautiful tail, and a faint mallet-like "tok" gives the onset a pleasant core.</li>
+<li><strong>Dense undulation</strong> — several slightly detuned low tones overlap into a "wobble" of moving air; on headphones it spreads left and right.</li>
+<li><strong>Dial in the low end with TONE BASS</strong> — raising TONE's BASS adds weight. <strong>Push it too far and the sound breaks up into a crackly distortion.</strong> Move BASS slowly to find the single richest point just before it breaks — its sweet spot.</li>
+</ul>
+<p class="note">※ This sub-bass barely sounds on small or phone speakers. <strong>Headphones or a subwoofer are strongly recommended.</strong> Because the low end is pushed to its limit it distorts easily, so start at a low volume.</p>
+<h2>BATH's three noises</h2>
+<p>Brown, pink and white are less instruments than <strong>continuous ambience</strong>. Choose one in BATH and press START in CRUISE: an unbroken layer of sound keeps flowing and softly covers household noise. Shape it to your night with the TONE bass / mid / treble knobs.</p>
+<ul>
+<li><strong>WHITE</strong> — an even “shhh” across all frequencies. For focus and masking outside noise; for sleep once you're used to it. If it feels sharp, lower TREBLE.</li>
+<li><strong>PINK</strong> — a softer “shhh” tilted toward the lows, like rain or a waterfall. Gentler than white, for focus, masking and sleep.</li>
+<li><strong>BROWN</strong> — a low “rrr”, a wrap-around rumble. Beyond focus and sleep, it can settle the mind when anxiety or a racing heartbeat pulls at your attention. Raise BASS to bring in the 48 Hz sub for real body (headphones recommended).</li>
+</ul>
+<p class="note">※ Choosing a noise mode auto-dips the volume to ~10% (so the jump from normal modes doesn't startle). Raise it from there with VOLUME. Shuffle never picks a noise mode. Effects vary from person to person.</p>
+<h2>bonus — a song born from this garden</h2>
+<p>A track grown from sounds recorded in ripple-garden ♪</p>
+<p class="note">Where Ripples Wake ／ lyrics: sirop ／ music: SUNO</p>
+<iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
+<h2>about sirop</h2>
+<p>sirop grows an external-memory OS and builds small web playgrounds with four AI agents (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). A series of single-file “touchable little worlds”: gem-cosmos, shima-shima, and ripple-garden. The first implementation was by Kuu / Claude Fable 5 (Ultracode).</p>
+<p>This garden grows from one idea. Don't throw away information or sparks of thought — sow them like seeds, let them rest, and raise them together with AI: an attempt at an “external-memory OS.” Don't rush to answers; leave questions as questions. Don't run on enemies or anger; keep a quiet place. And turn knowledge from something you only read into a <strong>little world you can touch and play with</strong>. ripple-garden is one small crystal of that idea, made tangible.</p>
+<p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
+  },
+  fr: {
+    hint: "TOUCHEZ L'EAU",
+    modeNormalLabel: "NORMAL", modeBathLabel: "BAIN",
+    confirmToBath: "Passer en mode BAIN ?", confirmFromBath: "Quitter le mode BAIN ? (le son continu s'arrête)",
+    themes: ["clair", "sombre", "système"],
+    close: "fermer",
+    histAll: "voir tout l'historique",
+    histLess: "afficher les récents",
+    brandSub: "JARDIN D'ONDES — INSTRUMENT D'EAU GÉNÉRATIF",
+    cruiseEnd: "croisière terminée — bonne nuit",
+    hist: [
+      ["v019", "Moteurs d'ondes propres à chaque SCÈNE. RAIN GLASS ne reste plus une onde circulaire : elle devient une pluie verticale sur verre. SHORE pousse de larges bandes d'écume depuis le bas. DEEP WATER emploie des ondes plus lentes et plus larges. SILVER CURRENT met au premier plan le courant du banc de poissons plutôt que la surface. Les touches ont désormais une forme différente selon la scène, et les collisions viennent des pics d'énergie du champ d'onde — écume, lumière ou banc qui se sépare. Changer de SCÈNE réinitialise eau, particules et poissons pour donner l'impression de changer d'image. Le son reste intact."],
+      ["v018", "SURFACE devient des SCÈNES d'ambiance. RAIN GLASS (une vitre sous la pluie), SHORE (un bas-fond) et DEEP WATER (les profondeurs) reçoivent chacune leur arrière-plan, des particules (pluie, écume, lumière flottante) et des effets de collision des vagues, si bien que l'image change dès qu'on bascule. Une nouvelle scène SILVER CURRENT apparaît — un banc de poissons argentés tournant dans un courant, qui se disperse quand on le touche et se reforme en quelques secondes, comme un aquarium. Une extension visant la vidéo d'ambiance longue durée ; le son reste intact."],
+      ["v017", "Nouveaux thèmes d'eau SURFACE. Un menu sous WATER permet de choisir la matière de l'eau — CLASSIC, puis POND, STREAM, RAIN GLASS, DEEP WATER, SHORE, GLASS WATER et INK WATER. Chaque thème règle ensemble la vitesse des vagues, l'amortissement et la réflexion, avec scintillements, reflets, profondeur, bokeh d'avant-plan et lumière chaude/froide, ainsi qu'un léger mouvement autonome (gouttes de pluie, gouttelettes). Indépendant du mode sonore et du thème clair/sombre ; votre choix est mémorisé."],
+      ["v016", "BOWL rejoint le groupe BAIN. Les sons continus — autrefois seulement les bruits blanc/rose/brun — incluent désormais BOWL (bain de basses) sous une même bannière, le BAIN, distincte de NORMAL. Passer de NORMAL au BAIN demande toujours confirmation, abaisse le volume à ~10 %, et le mode aléatoire reste dans NORMAL seul (le BAIN n'est jamais choisi). L'étiquette « NOISE » devient BAIN (EN : BATH), et BOWL devient « BOWL — Bain de basses ». L'onglet ripple-garden est restructuré pour s'ouvrir sur les deux modes et le bienfait de masquage sonore du BAIN (couvrir bruits domestiques et voix), et le journal reçoit un résumé de ce que rapporte la recherche fiable sur les bols chantants et le calme (ondes cérébrales, équilibre autonome, baisse de l'anxiété — sans excès)."],
+      ["v015", "BOWL devient un bain sonore très grave. Touchez l'eau et un drone sub-grave s'installe, tient une dizaine de secondes, puis s'efface sur dix autres avec une lente ondulation. Chaque toucher résonne d'une longue traîne et d'un cœur de mailloche, tandis que désaccord et LFO créent une ondulation dense. TONE (ex-NOISE TONE) devient un égaliseur trois bandes commun à tous les modes, toujours visible, pour que le BASS pousse les graves juste au bord de la distorsion. La tessiture de BOWL descend, l'eau ondule plus profond et plus longtemps, et sa palette vire au bleu indigo profond, émeraude et or. Casque recommandé."],
+      ["v014", "Réécriture de la section « comment jouer » de l'onglet ripple-garden pour coller à la version actuelle : la bascule NORMAL/NOISE, la CROISIÈRE de type lecteur (lecture, arrêt, répétition, aléatoire, suivant, TIME, VOLUME), HARMONY / NOISE TONE liés au mode, l'interrupteur WATER basse consommation, et thème/langue. À propos de sirop porte désormais, en bref, l'idée derrière tout cela — un « OS de mémoire externe » qui sème l'information comme des graines et la cultive avec l'IA, et transforme le savoir en petits mondes que l'on touche."],
+      ["v013", "Touches de finition. L'historique complet reçoit une bascule « afficher les récents » pour le replier à cinq entrées. Les lecteurs journal et ripple-garden s'estompent plus nettement en haut et en bas, le texte disparaissant complètement juste avant l'en-tête et le pied de page. Crédit de première implémentation mis à jour dans la section about."],
+      ["v012", "Peaufinage et corrections. Correction d'un bug où la boîte de confirmation réapparaissait chaque fois que le mode changeait automatiquement pendant croisière + aléatoire (elle ne demande plus qu'au passage de la frontière NORMAL↔NOISE, jamais lors des changements internes ou aléatoires). GLASS est encore légèrement adouci. L'historique complet défile désormais dans sa carte et ne peut plus déborder hors de l'écran en empêchant la fermeture. Enfin, les lecteurs journal et ripple-garden s'estompent doucement en haut et en bas, pour que le texte ne chevauche plus l'en-tête ni le pied de page."],
+      ["v011", "Refonte du panneau. CRUISE devient un lecteur (icônes lecture⇄arrêt, suivant, répéter, aléatoire, avec le VOLUME à côté) ; HARMONY et NOISE TONE s'échangent selon le mode. WATER est désormais un interrupteur qui sert aussi de mode basse consommation (off coupe le visuel ainsi que réflexions, interférences et scintillement, le son continue). GLASS est adouci, et l'onglet ripple-garden gagne un morceau bonus né de ce jardin."],
+      ["v010", "MODE est désormais séparé en groupes NORMAL / NOISE avec des listes compactes. Le passage de frontière ne demande confirmation que si un son joue ; NOISE coupe et désactive automatiquement SHUFFLE, puis restaure son état au retour vers NORMAL. Le menu iPhone atteint maintenant la zone sûre inférieure et les réflexions tonales restent muettes dans les modes de bruit."],
+      ["v009", "Stabilité sur longue durée. Les voix terminées libèrent désormais leurs nœuds audio (après la traîne de réverbération) au lieu de s'accumuler sur la sortie — une cause probable du ralentissement ou du gel de la page après des heures. Et toutes les 120 minutes par défaut, un nettoyage discret s'exécute : fondu sortant, balayage du champ d'ondes et des ondulations, fondu entrant, pour réinitialiser sans casser le son."],
+      ["v008", "Nappe de bruit continue ajoutée aux trois modes de bruit. Pendant la CROISIÈRE, choisir brun/rose/blanc déclenche désormais un drone continu avec du corps — auparavant seulement des sons décroissants par ondulation, qui semblaient maigres. Un réglage NOISE TONE à trois bandes (grave/médium/aigu) le façonne, et le brun reçoit un léger sub-grave de 48 Hz. Passer en mode bruit abaisse automatiquement le volume à ~10 % pour éviter un saut surprenant, le mode aléatoire ne choisit plus les bruits, et l'onglet ripple-garden explique l'usage des trois bruits. Pensé pour la concentration, le sommeil et l'apaisement de l'anxiété."],
+      ["v007", "Version de normalisation documentaire : conserve le comportement audio de v006 et synchronise la date, le README, l'entrée du projet, la spécification et les routes publiques."],
+      ["v006", "ASSIST repensé (ON = tout optimisé vers des accords agréables / OFF = friction occasionnelle), dix progressions classiques, modes xylophone/glockenspiel/bruits, SUSTAIN, historique complet, marque localisée, favicon."],
+      ["v005", "Sortie publique. Vignette OGP, README, GitHub Pages."],
+      ["v004", "Harmonies en scènes, grooves à contretemps, réflexions accordées, un soupçon de friction."],
+      ["v003", "Croisière automatique (5–120 min, ∞, aléatoire), fondus, trois langues, thèmes, onglets journal & ripple-garden."],
+      ["v002", "Mode BOWL, harmonies par progressions d'accords, jeu à la barre d'espace et coups d'archet, assistance de confort."],
+      ["v001", "Eau par équation d'onde, cinq modes, Web Audio événementiel, enregistrement WAV."],
+    ],
+    journal: `
+<h2>journal — petites notes sur l'eau et le son ambiant</h2>
+<p class="lead">Pourquoi laissons-nous la pluie sonner pendant des heures ? Une courte promenade dans la culture de l'eau qui ne s'arrête jamais, derrière ripple-garden.</p>
+<h2>Le bruit a des couleurs</h2>
+<p>Un son contenant toutes les fréquences à égalité est un bruit blanc. Incliné vers les graves, il devient rose ; enfoncé plus profond, brun — la rumeur lourde et douce des cascades et des averses. Le mode BOWL de ripple-garden fait passer un bruit brun dans des filtres très résonants pour créer la voix d'un bol de verre frotté.</p>
+<h2>Pourquoi le son ambiant apaise</h2>
+<p>On rapporte qu'un fond sonore stable masque les bruits soudains, ce qui peut aider la concentration et le sommeil. Beaucoup de sons naturels vivent entre ordre et hasard — la fameuse fluctuation en 1/f — et relâchent doucement l'attention. Les effets varient selon les personnes ; rien d'universel ici. Pourtant, l'habitude d'emplir une pièce du son de l'eau existe partout.</p>
+<h2>Les bols chantants et le calme — ce que dit la recherche</h2>
+<p>Le lien entre le son des bols chantants (métal et cristal) et la relaxation a été étudié dans des articles évalués par les pairs et des revues systématiques. Beaucoup de sources sont commerciales, donc la qualité varie ; mais en se limitant aux sources académiques les plus fiables, quelques directions reviennent régulièrement. Ce ne sont que des tendances de recherche — les effets varient selon les personnes, et rien de tout cela n'est un avis médical.</p>
+<ul>
+<li><strong>Des ondes cérébrales qui glissent</strong> — les « battements » graves nés de l'interférence acoustique réduiraient les ondes rapides liées à l'éveil et à la tension, tout en augmentant les ondes lentes liées à la relaxation profonde.</li>
+<li><strong>Un basculement du système autonome</strong> — les analyses de variabilité de la fréquence cardiaque montrent une hausse des indices parasympathiques (repos) et une baisse de la fréquence cardiaque au repos dans plusieurs études.</li>
+<li><strong>Moins d'anxiété et de tension</strong> — des études contrôlées et observationnelles rapportent une amélioration des scores d'anxiété d'état et d'humeur.</li>
+<li><strong>Une relaxation passive, sans effort</strong> — contrairement aux méthodes exigeant une concentration consciente, la simple écoute semble déclencher passivement une réponse de relaxation.</li>
+</ul>
+<p class="note">※ Le son de ripple-garden n'est pas un vrai bol mais une synthèse inspirée de son grave profond. Ce qui précède relève de tendances générales de recherche et ne garantit aucun effet.</p>
+<h2>Chronique du son de l'eau</h2>
+<ul>
+<li>Époque d'Edo — shishi-odoshi et suikinkutsu : des dispositifs de jardin pour admirer l'écho d'une goutte.</li>
+<li>1917 — la « musique d'ameublement » de Satie : une musique pour exister, non pour écouter.</li>
+<li>1978 — Brian Eno, <i>Music for Airports</i>. L'ambient reçoit son nom.</li>
+<li>Années 1980 — le kankyō ongaku japonais ; Hiroshi Yoshimura et la musique des espaces.</li>
+<li>Années 2010 — huit heures de pluie, dix heures de vagues sur YouTube.</li>
+<li>2017 — lo-fi hip hop radio : la musique qui ne s'arrête pas devient un meuble du quotidien.</li>
+</ul>
+<h2>L'invention de la durée</h2>
+<p>Les vidéos ambiantes valent par leur refus de finir. Non pas cinq belles minutes, mais quatre-vingt-dix minutes de présence. Le mode croisière en est la version auto-générée : de cinq minutes à deux heures, ou à l'infini, l'eau joue seule. Allumez le mode aléatoire et les modes et progressions s'échangent lentement.</p>
+<p class="note">※ Volume bas conseillé. Les effets varient ; ceci est de l'histoire culturelle, pas un avis médical.</p>`,
+    about: `
+<h2>qu'est-ce que ripple-garden</h2>
+<p class="lead">Un jardin où la surface nocturne de l'eau devient un instrument. Les ondes se propagent par une vraie physique (l'équation d'onde) ; le son naît de ses événements — gouttes, réflexions, interférences. Une musique ambiante que l'on touche.</p>
+<h2>deux modes — NORMAL et BAIN</h2>
+<p>Ce jardin a deux caractères. <strong>NORMAL</strong> est un instrument dont on joue en touchant l'eau pour créer son et ondulations. <strong>BAIN</strong> est un mode où l'on se plonge dans une couche de son ininterrompue.</p>
+<p>Le BAIN n'est pas seulement pour la concentration et la détente. Un son régulier <strong>masque doucement les bruits domestiques, les voix et le vacarme des travaux extérieurs</strong> (masquage sonore). Quand l'anxiété ou l'irritation attire l'attention vers un cœur qui s'emballe, se laisser couler dans cette couche de son peut en détourner l'attention et l'apaiser un peu (<strong>cela varie selon les personnes</strong>).</p>
+<h2>comment jouer</h2>
+<ul>
+<li>Clic / toucher — une goutte. La hauteur règle la note, l'horizontale le panoramique et l'accord.</li>
+<li>Glisser — caresser l'eau. Barre d'espace — une goutte sous le pointeur ; frappez-la en rythme.</li>
+<li>Espace maintenu + déplacement — l'archet : un arpège marche le long de votre geste.</li>
+<li>MODE — basculez entre NORMAL et BAIN, puis choisissez dans chaque liste. NORMAL compte CALM / GLASS / STORM / RESONANCE / ZEN plus xylophone et glockenspiel (mailloches dures et en laine). BAIN propose BOWL (bain de basses) / blanc / rose / brun.</li>
+<li>CRUISE — un lecteur automatique : ▶ lecture, ■ arrêt, répétition (boucle ∞), aléatoire, un bouton « suivant » à côté, plus TIME (5–120 min) et VOLUME. À laisser tourner comme une vidéo ambiante.</li>
+<li>HARMONY — la progression d'accords en NORMAL (route royale, canon, années 50…). ASSIST ON optimise tout — même les réflexions — vers des accords agréables, OFF laisse entrer un peu de friction ; SUSTAIN pour les notes longues.</li>
+<li>TONE — un égaliseur trois bandes grave / médium / aigu, toujours visible. En NORMAL il façonne tout le son, en NOISE le bruit continu. Le BASS (grave) est surtout la clé pour régler les basses profondes de BOWL.</li>
+<li>WATER — un interrupteur pour la surface animée. OFF active un mode basse consommation qui coupe le visuel ainsi que réflexions, interférences et scintillement (le son continue) — pratique en déplacement ou pour la batterie. LIFE / SPEED / REFLECT ajustent l'eau.</li>
+<li>REC → STOP → WAV — sauvegardez votre prise en WAV stéréo 16 bits, prête pour SUNO. CLEAR réinitialise la surface.</li>
+<li>Thème / langue — en bas dans PREFS : clair, sombre, système, et 日本語 / English / Français.</li>
+</ul>
+<h2>Le bain de basses du BAIN — BOWL</h2>
+<p>BOWL (bain de basses) est <strong>uniquement le grave profond d'un bol de cristal d'alchimie, extrait</strong>. Les brillants harmoniques aigus sont retirés, ne laissant qu'un sub-grave que l'on ressent dans le corps. Comprendre chaque élément permet de s'y enfoncer davantage.</p>
+<ul>
+<li><strong>Un sub-grave monte au toucher</strong> — dès que vous touchez l'eau, un drone grave s'installe en fondu et devient riche en une demi-seconde environ. Il tient une dizaine de secondes, puis disparaît sur dix autres avec un lent scintillement ondoyant.</li>
+<li><strong>De longues traînes avec un cœur</strong> — chaque toucher résonne d'une longue et belle traîne, et un léger « toc » de mailloche donne à l'attaque un cœur agréable.</li>
+<li><strong>Une ondulation dense</strong> — plusieurs sons graves légèrement désaccordés se superposent en un « wobble » d'air en mouvement ; au casque, il s'étend de gauche à droite.</li>
+<li><strong>Réglez les graves avec TONE BASS</strong> — monter le BASS de TONE ajoute du poids. <strong>Trop loin, le son se brise en une distorsion grésillante.</strong> Déplacez BASS lentement pour trouver le point le plus riche juste avant la cassure — son point idéal.</li>
+</ul>
+<p class="note">※ Ce sub-grave ne sort presque pas sur de petits haut-parleurs ou ceux d'un téléphone. <strong>Un casque ou un caisson de basses est fortement recommandé.</strong> Comme les basses sont poussées à leur limite, le son se déforme facilement ; commencez à faible volume.</p>
+<h2>Les trois bruits du BAIN</h2>
+<p>Le brun, le rose et le blanc sont moins des instruments qu'une <strong>ambiance continue</strong>. Choisissez-en un dans le BAIN et appuyez sur START en CROISIÈRE : une couche de son ininterrompue continue de couler et masque doucement les bruits domestiques. Façonnez-la à votre nuit avec les réglages TONE grave / médium / aigu.</p>
+<ul>
+<li><strong>WHITE (blanc)</strong> — un « chhh » égal sur toutes les fréquences. Pour la concentration et masquer les bruits extérieurs ; pour le sommeil une fois habitué. S'il semble trop vif, baissez TREBLE.</li>
+<li><strong>PINK (rose)</strong> — un « chhh » plus doux incliné vers les graves, comme la pluie. Plus doux que le blanc, pour la concentration, le masquage et le sommeil.</li>
+<li><strong>BROWN (brun)</strong> — un « rrr » grave, une rumeur qui enveloppe. Au-delà de la concentration et du sommeil, il peut apaiser l'esprit quand l'anxiété ou un cœur qui s'emballe tire l'attention. Montez BASS pour amener le sub de 48 Hz et du corps (casque recommandé).</li>
+</ul>
+<p class="note">※ Choisir un mode de bruit abaisse automatiquement le volume à ~10 % (pour éviter la surprise depuis les modes normaux). Remontez-le avec VOLUME. Le mode aléatoire ne choisit jamais un bruit. Les effets varient selon les personnes.</p>
+<h2>bonus — une chanson née de ce jardin</h2>
+<p>Un morceau né de sons enregistrés dans ripple-garden ♪</p>
+<p class="note">Where Ripples Wake ／ paroles : sirop ／ musique : SUNO</p>
+<iframe src="https://suno.com/embed/6c88c634-d980-47f5-909b-fecef6e78b3a" width="100%" height="240" frameborder="0" allow="encrypted-media; fullscreen" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Where Ripples Wake — Suno" style="max-width:760px; border:1px solid var(--hairline); border-radius:4px;"><a href="https://suno.com/song/6c88c634-d980-47f5-909b-fecef6e78b3a" target="_blank" rel="noopener">Listen on Suno</a></iframe>
+<h2>à propos de sirop</h2>
+<p>sirop cultive un OS de mémoire externe et construit de petits terrains de jeu web avec quatre agents IA (Kou/Codex, Sol/Cursor, Kuu/Claude Code, Rabi/Antigravity). Une série de « petits mondes à toucher » en un seul fichier : gem-cosmos, shima-shima et ripple-garden. La première implémentation est de Kuu / Claude Fable 5 (Ultracode).</p>
+<p>Ce jardin naît d'une idée. Ne pas jeter l'information ni les éclairs de pensée — les semer comme des graines, les laisser reposer, et les faire grandir avec l'IA : une tentative d'« OS de mémoire externe ». Ne pas se précipiter vers les réponses ; laisser les questions comme des questions. Ne pas se nourrir d'ennemis ni de colère ; garder un lieu paisible. Et transformer le savoir, de simple lecture en un <strong>petit monde que l'on touche et avec lequel on joue</strong>. ripple-garden est un petit cristal de cette idée, rendu tangible.</p>
+<p class="note"><a href="https://github.com/sirop-d" target="_blank" rel="noopener">github.com/sirop-d</a></p>`,
+  },
+};
+
+/* ---------- 共有状態 ---------- */
+const state = {
+  modeIdx: 0, sceneIdx: 0, genreIdx: 0, assist: true, sustain: false,
+  life: 1, speed: 1, reflect: .75, volume: .75,
+  lastTapTime: 0,
+  tab: "garden",
+  lang: "ja", theme: "system",
+  cruiseMin: 30,
+  // TONE: モード別の3バンドEQ（単位 dB）。NOISE=持続ベッド用 / NORMAL=通常&BOWL声部用（重低音の追い込み）
+  noiseBass: 4, noiseMid: 0, noiseTreble: -3,
+  toneBass: 0, toneMid: 0, toneTreble: 0,
+  _volBeforeNoise: null, // 通常音→ノイズで音量を絞る前の値（戻すとき用）
+  _shuffleBeforeNoise: null, // NOISEへ入る前のSHUFFLE状態（NORMAL復帰時に戻す）
+  autoCleanMin: 120, // 長時間運用で蓄積を掃除する自動クリーンアップ間隔（分）。0で無効
+  water: true, // WATER(動的グラフィック) ON/OFF。OFF=低電力ECO（描画・波面計算・反射/干渉/きらめき停止、音は継続）
+};
+const mode = () => MODES[state.modeIdx];
+// 音浴(BATH)グループ判定: 持続ノイズ3色＋BOWL(低音浴)。UI/シャッフル/確認/音量絞りの境界に使う。
+// 音響合成は m.voice（noise/bowl）で別々に分岐するので、グループ判定とは独立。
+const inNoiseGroup = (m) => m.voice === "noise" || m.id === "bowl";
+const genre = () => GENRES[state.genreIdx];
+const T = () => I18N[state.lang];
+
+/* ---------- 4. ハーモニーとアシスト ---------- */
+const midiHz = m => 440 * Math.pow(2, (m - 69) / 12);
+const ladderCache = new Map();
+
+/* FREE時: モード固有のペンタトニック梯子（2オクターブ） */
+function modeLadder(m){
+  const key = "mode:" + m.id;
+  if (ladderCache.has(key)) return ladderCache.get(key);
+  const out = [];
+  for (let oct = 0; oct < 2; oct++)
+    for (const s of m.scale) out.push(midiHz(m.root + s + oct * 12));
+  out.push(midiHz(m.root + 24));
+  ladderCache.set(key, out);
+  return out;
+}
+
+/* 和声時: 画面X位置のコードを ±1オクターブに展開した梯子 */
+function chordLadder(g, col, shift){
+  const key = g.id + ":" + col + ":" + shift;
+  if (ladderCache.has(key)) return ladderCache.get(key);
+  const set = new Set();
+  for (const o of [-12, 0, 12])
+    for (const n of g.prog[col]) set.add(n + o + shift);
+  const out = [...set].sort((a, b) => a - b).map(midiHz);
+  ladderCache.set(key, out);
+  return out;
+}
+
+function columnAt(x01){
+  const g = genre();
+  if (!g.prog) return -1;
+  return Math.max(0, Math.min(g.prog.length - 1, Math.floor(x01 * g.prog.length)));
+}
+
+function currentLadder(x01){
+  const g = genre();
+  if (!g.prog) return modeLadder(mode());
+  return chordLadder(g, columnAt(x01), mode().octShift);
+}
+
+/* 旋律メモリ: アシストONのとき直前の音から大跳躍しないように歩く */
+const melody = { idx: null, t: 0 };
+
+/* 音高決定。arpStep を渡すとストローク用に梯子を1段ずつ歩く（分散和音） */
+function pitchAt(x01, y01, arpStep){
+  const lad = currentLadder(x01);
+  let idx;
+  if (arpStep !== undefined && melody.idx !== null){
+    idx = melody.idx + arpStep;
+    if (idx >= lad.length) idx = lad.length - 2; // 端で折り返す
+    if (idx < 0) idx = 1;
+  } else {
+    idx = Math.round((1 - y01) * (lad.length - 1));
+    // アシスト: 4秒以内の連続入力は跳躍を±4段に抑え、旋律線をなめらかに
+    if (state.assist && melody.idx !== null && performance.now() - melody.t < 4000){
+      const J = 4;
+      idx = Math.max(melody.idx - J, Math.min(melody.idx + J, idx));
+    }
+  }
+  idx = Math.max(0, Math.min(lad.length - 1, idx));
+  // 違和感の匙加減: ごく稀に隣の段へ滑る。完全な正しさは退屈の入口
+  const fr = state.assist ? 0 : (genre().friction || 0); // ONでは違和感ゼロ
+  if (fr && arpStep === undefined && Math.random() < fr){
+    idx = Math.max(0, Math.min(lad.length - 1, idx + (Math.random() < .5 ? -1 : 1)));
+  }
+  melody.idx = idx; melody.t = performance.now();
+  let f = lad[idx];
+  const m = mode();
+  if (!state.assist && m.jitter) f *= Math.pow(2, (Math.random() * 2 - 1) * m.jitter / 1200);
+  return f;
+}
+
+/* 任意周波数を現在の梯子の最寄り音へ吸着（干渉音の濁り防止） */
+function nearestTone(f, lad){
+  let best = lad[0], d = Infinity;
+  for (const t of lad){
+    const dd = Math.abs(Math.log(t / f));
+    if (dd < d){ d = dd; best = t; }
+  }
+  return best;
+}
+
+function resetMelody(){ melody.idx = null; melody.t = 0; }
+
+/* ---------- 5. 水面シミュレーション ---------- */
+const sim = { w:0, h:0, cell:4, cur:null, prev:null, canvas:null, ctx:null, img:null };
+const view = document.getElementById("view");
+const vctx = view.getContext("2d");
+let DPR = 1, VW = 0, VH = 0;
+let collisionGrid = null;
+
+function setupSim(){
+  VW = window.innerWidth; VH = window.innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  view.width = Math.round(VW * DPR);
+  view.height = Math.round(VH * DPR);
+
+  // セルサイズ: 端末負荷に合わせて格子数を約16万セル以下に抑える
+  let cell = Math.min(VW, VH) > 760 ? 3 : 4;
+  while ((VW / cell) * (VH / cell) > 160000) cell++;
+  sim.cell = cell;
+  sim.w = Math.max(8, Math.round(VW / cell));
+  sim.h = Math.max(8, Math.round(VH / cell));
+  sim.cur = new Float32Array(sim.w * sim.h);
+  sim.prev = new Float32Array(sim.w * sim.h);
+  sim.canvas = document.createElement("canvas");
+  sim.canvas.width = sim.w; sim.canvas.height = sim.h;
+  sim.ctx = sim.canvas.getContext("2d");
+  sim.img = sim.ctx.createImageData(sim.w, sim.h);
+  collisionGrid = new Float32Array(sim.w * sim.h);
+  const d = sim.img.data;
+  for (let i = 3; i < d.length; i += 4) d[i] = 255; // アルファ不透明固定
+}
+
+/* ガウス型の盛り上がりを水面に落とす（負方向 = 水を押し下げる） */
+function injectImpulse(cssX, cssY, amp, radiusCells){
+  const cx = cssX / sim.cell, cy = cssY / sim.cell;
+  const r = radiusCells, r2 = r * r;
+  const x0 = Math.max(1, Math.floor(cx - r)), x1 = Math.min(sim.w - 2, Math.ceil(cx + r));
+  const y0 = Math.max(1, Math.floor(cy - r)), y1 = Math.min(sim.h - 2, Math.ceil(cy + r));
+  for (let y = y0; y <= y1; y++){
+    for (let x = x0; x <= x1; x++){
+      const dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+      if (d2 < r2) sim.cur[y * sim.w + x] -= amp * Math.exp(-d2 / (r2 * .35));
+    }
+  }
+}
+
+function injectEllipticImpulse(cssX, cssY, amp, rxCells, ryCells, driftX){
+  const cx = cssX / sim.cell, cy = cssY / sim.cell;
+  const rx = Math.max(.8, rxCells), ry = Math.max(.8, ryCells);
+  const x0 = Math.max(1, Math.floor(cx - rx)), x1 = Math.min(sim.w - 2, Math.ceil(cx + rx));
+  const y0 = Math.max(1, Math.floor(cy - ry)), y1 = Math.min(sim.h - 2, Math.ceil(cy + ry));
+  for (let y = y0; y <= y1; y++){
+    for (let x = x0; x <= x1; x++){
+      const dx = (x - cx) / rx, dy = (y - cy) / ry, d2 = dx * dx + dy * dy;
+      if (d2 < 1){
+        const i = y * sim.w + x;
+        const w = Math.exp(-d2 / .36);
+        sim.cur[i] -= amp * w;
+        if (driftX) sim.cur[i + (driftX > 0 ? 1 : -1)] -= amp * w * Math.min(.45, Math.abs(driftX));
+      }
+    }
+  }
+}
+
+function injectBandImpulse(cssY, amp, widthCells, phase){
+  const cy = cssY / sim.cell, ry = Math.max(1, widthCells);
+  const y0 = Math.max(1, Math.floor(cy - ry)), y1 = Math.min(sim.h - 2, Math.ceil(cy + ry));
+  for (let y = y0; y <= y1; y++){
+    const dy = (y - cy) / ry;
+    const wY = Math.exp(-(dy * dy) / .45);
+    const row = y * sim.w;
+    for (let x = 1; x < sim.w - 1; x++){
+      const chop = .72 + .28 * Math.sin(x * .21 + phase);
+      sim.cur[row + x] -= amp * wY * chop;
+    }
+  }
+}
+
+function injectSceneImpulse(cssX, cssY, amp, radiusCells, opt = {}){
+  const sc = scene(), eng = sc.engine || {};
+  if (eng.kind === "rain"){
+    const n = opt.light ? 1 : 3;
+    for (let k = 0; k < n; k++){
+      const off = (k - (n - 1) / 2) * 9;
+      injectEllipticImpulse(cssX + off * .25, cssY + off, amp * (k === 1 ? 1 : .58), radiusCells * .45, radiusCells * 2.7, .12);
+    }
+    return;
+  }
+  if (eng.kind === "shore"){
+    injectEllipticImpulse(cssX, cssY, amp * 1.05, radiusCells * 5.8, radiusCells * 1.05, 0);
+    injectBandImpulse(Math.max(cssY, VH * .62), amp * .36, radiusCells * 1.6, performance.now() * .003);
+    return;
+  }
+  if (eng.kind === "deep"){
+    injectEllipticImpulse(cssX, cssY, amp * .72, radiusCells * 3.6, radiusCells * 3.6, 0);
+    injectImpulse(cssX, cssY, -amp * .20, radiusCells * 1.4);
+    return;
+  }
+  if (eng.kind === "ink"){
+    injectEllipticImpulse(cssX, cssY, amp * .82, radiusCells * 1.7, radiusCells * 2.5, .18);
+    return;
+  }
+  if (eng.kind === "silver"){
+    injectEllipticImpulse(cssX, cssY, amp * .18, radiusCells * 2.5, radiusCells * 2.5, 0);
+    return;
+  }
+  if (eng.kind === "stream"){
+    injectEllipticImpulse(cssX, cssY, amp, radiusCells * 2.4, radiusCells * 1.1, .35);
+    return;
+  }
+  injectImpulse(cssX, cssY, amp, radiusCells);
+}
+
+/* フェードクリア: 光も音もゆっくり落としてから払う（バチッと暗転させない） */
+const fadeClear = { active:false, t0:0, dur:1300 };
+let lastAutoClean = 0; // 最後にクリーンアップした時刻（自動クリーンのタイマー基準）
+function clearWater(){
+  if (fadeClear.active) return;
+  fadeClear.active = true; fadeClear.t0 = performance.now();
+  lastAutoClean = performance.now(); // 手動・自動どちらのクリアでもタイマーを仕切り直す
+  audio.fadeTo(0, .9);
+}
+function finishClear(){
+  sim.cur.fill(0); sim.prev.fill(0);
+  ripples.length = 0; glows.length = 0;
+  resetMelody();
+  fadeClear.active = false;
+  audio.fadeTo(state.volume, 1.1); // 音を静かに戻す
+}
+
+/* 1ステップ進める。prevに次状態を書き込み、最後にバッファ交換 */
+function stepField(){
+  const W = sim.w, H = sim.h;
+  const m = mode();
+  const sf = scene();
+  const eng = sf.engine || {};
+  const now = performance.now();
+  if (eng.kind === "silver"){
+    const cur = sim.cur, nxt = sim.prev;
+    for (let y = 1; y < H - 1; y++){
+      const y01 = y / (H - 1);
+      for (let x = 1; x < W - 1; x++){
+        const i = y * W + x, x01 = x / (W - 1);
+        const caustic =
+          Math.sin(x * .095 + now * .0011 + Math.sin(y * .025 + now * .00025) * 1.8) +
+          Math.sin((x + y) * .047 - now * .00085) * .7 +
+          Math.sin(Math.hypot(x01 - .5, y01 - .5) * 18 - now * .0014) * .45;
+        nxt[i] = cur[i] * .78 + caustic * 1.7;
+      }
+    }
+    for (let x = 0; x < W; x++){ nxt[x] *= .6; nxt[(H-1)*W + x] *= .6; }
+    for (let y = 0; y < H; y++){ nxt[y*W] *= .6; nxt[y*W + W-1] *= .6; }
+    sim.prev = cur; sim.cur = nxt;
+    return;
+  }
+  const c2 = Math.min(.47, m.c2 * sf.phys.cMul * state.speed * state.speed);
+  let damp = 1 - (m.k * sf.phys.dampMul / state.life);
+  if (fadeClear.active) damp *= .90; // 光のフェードアウト
+  const cur = sim.cur, nxt = sim.prev;
+  const ax = eng.anisotropyX || 1, ay = eng.anisotropyY || 1;
+
+  for (let y = 1; y < H - 1; y++){
+    let i = y * W + 1;
+    for (let x = 1; x < W - 1; x++, i++){
+      const lapX = cur[i-1] + cur[i+1] - 2 * cur[i];
+      const lapY = cur[i-W] + cur[i+W] - 2 * cur[i];
+      let v = (2 * cur[i] - nxt[i] + c2 * (lapX * ax + lapY * ay)) * damp;
+      if (eng.kind === "rain"){
+        v = v * (1 - eng.drip) + cur[i-W] * eng.drip - Math.max(0, cur[i]) * .018;
+      } else if (eng.kind === "shore"){
+        const y01 = y / (H - 1);
+        const tide = Math.sin((y01 * 7.5 - now * .00042) * 6.2832 + Math.sin(x * .035) * .35);
+        const band = Math.exp(-Math.pow((y01 - (.70 + .09 * Math.sin(now * .00018))) / .105, 2));
+        v += tide * band * (eng.tide || 0);
+        v += cur[i+W] * .025; // 下から押し寄せる浅瀬の流れ
+      } else if (eng.kind === "deep"){
+        const under = Math.sin(x * .025 + now * .00022) * Math.sin(y * .018 - now * .00016);
+        v = v * .988 + under * (eng.undercurrent || 0);
+      } else if (eng.kind === "stream"){
+        v += (cur[i-1] - cur[i+1]) * (eng.advectX || 0);
+      } else if (eng.kind === "ink"){
+        v = v * (eng.viscosity || .6) + cur[i-1] * (eng.advectX || 0) - Math.abs(lapX + lapY) * .003;
+      }
+      nxt[i] = v;
+    }
+  }
+
+  // 端: ミラー境界（反射）。REFLECT が低いほど吸収帯で波を消す
+  const refl = Math.min(1, state.reflect * sf.phys.reflMul);
+  for (let x = 0; x < W; x++){
+    nxt[x] = nxt[x + W] * refl;
+    nxt[(H-1)*W + x] = nxt[(H-2)*W + x] * refl;
+  }
+  for (let y = 0; y < H; y++){
+    nxt[y*W] = nxt[y*W + 1] * refl;
+    nxt[y*W + W-1] = nxt[y*W + W-2] * refl;
+  }
+  const absorb = (1 - refl) * .32;
+  if (absorb > .003){
+    const B = 12;
+    for (let b = 0; b < B; b++){
+      const g = 1 - absorb * Math.pow(1 - b / B, 2);
+      const yT = b * W, yB = (H-1-b) * W;
+      for (let x = 0; x < W; x++){ nxt[yT + x] *= g; nxt[yB + x] *= g; }
+      for (let y = 0; y < H; y++){ nxt[y*W + b] *= g; nxt[y*W + W-1-b] *= g; }
+    }
+  }
+
+  sim.prev = cur; sim.cur = nxt;
+}
+
+/* ---------- 6. 描画 ---------- */
+const glows = []; // {x, y, t0, str, col, life, r}
+
+/* パレット補間 — モード切替やシャッフルで水の色がゆっくり変わる */
+const pal = {
+  base:[...MODES[0].base], crest:[...MODES[0].crest], trough:[...MODES[0].trough],
+  lbase:[...MODES[0].lbase], hg:MODES[0].heightGain, sg:MODES[0].shadeGain,
+};
+function lerpPalette(){
+  const m = mode(), k = .045;
+  for (let i = 0; i < 3; i++){
+    pal.base[i]   += (m.base[i]   - pal.base[i])   * k;
+    pal.crest[i]  += (m.crest[i]  - pal.crest[i])  * k;
+    pal.trough[i] += (m.trough[i] - pal.trough[i]) * k;
+    pal.lbase[i]  += (m.lbase[i]  - pal.lbase[i])  * k;
+  }
+  pal.hg += (m.heightGain - pal.hg) * k;
+  pal.sg += (m.shadeGain - pal.sg) * k;
+}
+
+function isLight(){ return document.documentElement.dataset.theme === "light"; }
+
+function renderField(now){
+  const W = sim.w, H = sim.h, cur = sim.cur, d = sim.img.data;
+  const light = isLight();
+  // ごく弱い時間揺らぎ — 水面の明度がゆっくり呼吸する
+  const sf = scene(), R = sf.rend, A = sf.amb;
+  const breathe = 1 + A.breathAmp * Math.sin(now * A.breathSpeed);
+  const hg = pal.hg * breathe, sg = pal.sg;
+  const shimOn = R.shimmer > .001, shS = R.shimScale, shAmp = R.shimmer * 26;
+  const shPh = now * .001 * (1 + A.driftX), shPhY = now * .0007;
+  const crestBoost = 1 + R.highlight * .85, troughBoost = 1 + R.depth * 2.2;
+  const warmR = R.warm * 46, warmG = R.warm * 20, inkOn = R.ink > .5;
+  const [bR, bG, bB] = pal.base, [cR, cG, cB] = pal.crest, [tR, tG, tB] = pal.trough;
+  const [lR, lG, lB] = pal.lbase;
+  // v018: シーン背景（dark時のみ）/ 波頭の白化(foam) / 擬似normal方向光(nrm)
+  const foam = R.foam || 0, nrm = R.normal || 0;
+  const bgKindStr = (sf.bg && sf.bg.kind) || "flat";
+  const bgMode = (bgKindStr === "deep" ? 1 : bgKindStr === "shore" ? 2 : bgKindStr === "rain" ? 3 : bgKindStr === "tank" ? 4 : 0);
+  const sceneEnv = bgMode > 0; // 明示背景を持つシーンはUIテーマ(light/dark)に依らず自前の環境を描く
+  const bgT = now * .001, invW = 1 / W, invH = 1 / (H - 1);
+
+  let i = 0, p = 0;
+  for (let y = 0; y < H; y++){
+    const yu = y > 0 ? -W : 0, yd = y < H - 1 ? W : 0;
+    const y01 = y * invH;
+    for (let x = 0; x < W; x++, i++, p += 4){
+      const h = cur[i];
+      const gv = cur[i + yu] - cur[i + yd];
+      let v = h * hg + gv * sg;
+      v = v / (1 + Math.abs(v) * .0055); // ソフトクリップ
+      if (shimOn) v += Math.sin(x * shS + shPh) * Math.sin(y * shS * .9 - shPhY) * shAmp;
+      if (light && !sceneEnv){
+        // ライト: 明るい水面に波が青く影を落とす（環境シーンは下のelseで自前背景を描く）
+        if (v > 0){
+          const a = v * .0085 * crestBoost;
+          d[p] = lR - cR * a; d[p+1] = lG - cG * a; d[p+2] = lB - cB * a;
+        } else {
+          const a = v * -.004 * troughBoost;
+          d[p] = lR + (255 - lR) * a; d[p+1] = lG + (255 - lG) * a; d[p+2] = lB + (255 - lB) * a;
+        }
+      } else {
+        // シーン背景の基調色（bgMode 0=従来単色 / 1=深海 / 2=岸辺 / 3=雨窓 / 4=水槽）
+        let aR = bR, aG = bG, aB = bB;
+        if (bgMode === 1){            // DEEP: 上=水面寄り→下=深淵へ暗く、淡いエメラルド
+          const u = 1 - y01;
+          aR = 2 + u * 6; aG = 5 + u * 20; aB = 10 + u * 33;
+        } else if (bgMode === 2){     // SHORE: 上=深いターコイズ→下=浅瀬の砂、上へ流れる波帯
+          const band = Math.max(0, Math.sin((y01 * 7 - bgT * .7) * 6.2832)) * 13;
+          aR = 10 + y01 * 52 + band; aG = 58 + y01 * 92 + band; aB = 78 + y01 * 66 + band;
+          if (y01 > .86){ const fb = (y01 - .86) * 6.5; aR += fb * 90; aG += fb * 80; aB += fb * 70; }
+        } else if (bgMode === 3){     // RAIN: 暗い夜窓＋縦の滲み筋
+          const st = (Math.sin(x * .5) + Math.sin(x * .17 + y01 * .9)) * 1.6;
+          aR = 7 + st; aG = 12 + st; aB = 22 + st * 1.4;
+        } else if (bgMode === 4){     // TANK: 深い藍緑＋周辺減光（水槽の奥行き）
+          const cx = x * invW - .5, cy = y01 - .5, vig = 1 - (cx * cx + cy * cy) * 1.15;
+          aR = 3 + 6 * vig; aG = 14 + 22 * vig; aB = 16 + 24 * vig;
+        }
+        let rr, gg2, bb2;
+        if (v > 0){
+          const a = v * .01 * crestBoost;
+          rr = aR + cR * a + warmR * a; gg2 = aG + cG * a + warmG * a; bb2 = aB + cB * a;
+        } else {
+          const a = v * .009 * troughBoost;
+          rr = aR + tR * a; gg2 = aG + tG * a; bb2 = aB + tB * a;
+        }
+        // 擬似normal方向光: 横勾配で波頭に方向性ハイライト（左上光源）
+        if (nrm){
+          const gh = cur[i + (x > 0 ? -1 : 0)] - cur[i + (x < W - 1 ? 1 : 0)];
+          const sp = nrm * Math.max(0, gh * .5 + gv * .22) * 1.3;
+          rr += sp; gg2 += sp; bb2 += sp * 1.06;
+        }
+        // 波頭の白化(foam): エネルギーが高い場所だけ白い泡・筋へ
+        if (foam && v > 44){
+          const fw = Math.min(1, (v - 44) / 120) * foam;
+          rr += (255 - rr) * fw; gg2 += (255 - gg2) * fw; bb2 += (255 - bb2) * fw;
+        }
+        if (inkOn){ const lm = (rr + gg2 + bb2) * .333; rr += (lm - rr) * .55; gg2 += (lm - gg2) * .55; bb2 += (lm - bb2) * .5; }
+        d[p] = rr; d[p+1] = gg2; d[p+2] = bb2;
+      }
+    }
+  }
+  sim.ctx.putImageData(sim.img, 0, 0);
+
+  vctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  vctx.imageSmoothingEnabled = true;
+  vctx.imageSmoothingQuality = "high";
+  vctx.clearRect(0, 0, VW, VH);
+  vctx.drawImage(sim.canvas, 0, 0, VW, VH);
+
+  // 発光点（ダーク=加算で光る / ライト=乗算で青く滲む）
+  vctx.globalCompositeOperation = light ? "multiply" : "lighter";
+  for (let g = glows.length - 1; g >= 0; g--){
+    const gl = glows[g];
+    const age = (now - gl.t0) / 1000;
+    if (age > gl.life){ glows.splice(g, 1); continue; }
+    const k = 1 - age / gl.life;
+    const rad = gl.r + (1 - k) * gl.r * 2.2;
+    const colStr = light ? "70,105,150" : gl.col;
+    const grad = vctx.createRadialGradient(gl.x, gl.y, 0, gl.x, gl.y, rad);
+    grad.addColorStop(0, `rgba(${colStr}, ${(.28 * k * k * gl.str).toFixed(3)})`);
+    grad.addColorStop(1, light ? "rgba(255,255,255,0)" : "rgba(0,0,0,0)");
+    vctx.fillStyle = grad;
+    vctx.beginPath();
+    vctx.arc(gl.x, gl.y, rad, 0, Math.PI * 2);
+    vctx.fill();
+  }
+  vctx.globalCompositeOperation = "source-over";
+}
+
+function addGlow(x, y, str, col, life, r){
+  glows.push({ x, y, t0: performance.now(), str, col: col || "190,225,255", life: life || .7, r: r || 13 });
+  if (glows.length > 48) glows.shift();
+}
+
+/* 水面テーマの自律演出（音は鳴らさない・視覚のみ）。frame は ECO 中は呼ばない。 */
+function sceneAmbient(now, dt){
+  const A = scene().amb, R = scene().rend, k = dt / 16.7, light = isLight();
+  // 自然ドロップ（SHORE は下辺寄りに打ち寄せる）
+  if (A.dropRate > 0 && Math.random() < A.dropRate * k){
+    const dx = Math.random() * VW;
+    const dy = A.edge === "bottom" ? VH * (.7 + Math.random() * .3) : Math.random() * VH;
+    injectSceneImpulse(dx, dy, A.dropSize, 4.2, { ambient:true });
+  }
+  // 雨粒（RAIN GLASS）: 小さく頻繁
+  if (A.rainRate > 0){
+    let n = A.rainRate * k; n = Math.floor(n) + (Math.random() < (n % 1) ? 1 : 0);
+    for (let r = 0; r < n; r++) injectSceneImpulse(Math.random() * VW, Math.random() * VH, .016 + Math.random() * .02, 3.0, { ambient:true });
+  }
+  if (light) return; // 加算発光はダークのみ（ライトは乗算で濁るため）
+  // 煌めき（glint）: 明るく小さい短命のスパーク
+  if (R.glint > 0 && Math.random() < R.glint * k){
+    const col = R.warm > .3 ? "255,212,150" : "208,232,255";
+    addGlow(Math.random() * VW, Math.random() * VH * .92, .5 + Math.random() * .5, col, .35, 4 + Math.random() * 5);
+  }
+  // 前ボケ（bokeh）: 大きく柔らかい発光体（暖色＝オレンジ / 寒色）
+  if (A.bokehRate > 0 && Math.random() < A.bokehRate * k){
+    const warm = Math.random() < A.bokehWarm;
+    const col = warm ? "255,176,116" : "150,200,255";
+    addGlow(Math.random() * VW, Math.random() * VH, .22 + Math.random() * .28, col, 1.7 + Math.random() * 1.2, A.bokehSize * (.6 + Math.random() * .7));
+  }
+}
+
+/* ---------- 6b. シーン粒子・群泳・衝突FX（v018: 長尺環境映像シーン） ---------- */
+/* 視覚のみ・発音しない。背景(renderField) → 水面 → 粒子/群泳(drawScene) の順で重ねる。
+   個数上限・再利用・ECO停止でメモリと負荷を抑える（2時間耐久前提）。 */
+const sceneParts = [];                 // 泡/雨/浮遊粒 {x,y,vx,vy,age,life,kind,size,rot,hit}
+const PART_CAP = 1400;
+const fish = [];                       // 群泳(underwater) {x,y,a,sp,ph}
+let fishBuilt = -1;                    // 構築済みVW（リサイズ再構築判定）
+const fishDisturb = { x: 0, y: 0, t: -9999 }; // タップで群れを割る
+const _flow = { vx: 0, vy: 0 };
+
+// 弱い流れ場。silver=大きな渦 / deep=ゆっくり上昇 / shore=上方向へ押し寄せ
+function sceneFlow(id, x01, y01, now, out){
+  let vx = 0, vy = -.05;
+  if (id === "silver"){
+    const cx = .5 + .07 * Math.sin(now * .00009), cy = .5 + .05 * Math.cos(now * .00013);
+    const dx = x01 - cx, dy = y01 - cy, r = Math.hypot(dx, dy) + .001, tang = .9 / (r + .25);
+    vx = (-dy / r) * tang - dx * .12 + .12 * Math.sin(now * .0003 + y01 * 6);
+    vy = ( dx / r) * tang - dy * .12;
+  } else if (id === "deep"){
+    vy = -.18 + .08 * Math.sin(now * .0002 + x01 * 5); vx = .10 * Math.sin(now * .00017 + y01 * 4);
+  } else if (id === "shore"){
+    vy = -.5; vx = .12 * Math.sin(now * .0004 + y01 * 5);
+  } else { vx = .03 * Math.sin(now * .0002 + y01 * 4); }
+  out.vx = vx; out.vy = vy;
+}
+
+function ensureFish(){
+  const n = (scene().particles && scene().particles.count) || 0;
+  if (fishBuilt === Math.round(VW) && fish.length === n) return;
+  fish.length = 0;
+  for (let k = 0; k < n; k++){
+    const ang = Math.random() * 6.2832, rad = .08 + Math.random() * .42;
+    fish.push({ x: VW * (.5 + Math.cos(ang) * rad * .8), y: VH * (.5 + Math.sin(ang) * rad * .8),
+                a: ang, sp: 26 + Math.random() * 26, ph: Math.random() * 6.28 });
+  }
+  fishBuilt = Math.round(VW);
+}
+
+function updateFish(now, dt){
+  const k = Math.min(2.5, dt / 16.7), dist = (now - fishDisturb.t < 1800);
+  for (let f = 0; f < fish.length; f++){
+    const fi = fish[f];
+    sceneFlow("silver", fi.x / VW, fi.y / VH, now, _flow);
+    let vx = _flow.vx * 60, vy = _flow.vy * 60;
+    if (dist){
+      const dx = fi.x - fishDisturb.x, dy = fi.y - fishDisturb.y, d2 = dx * dx + dy * dy;
+      if (d2 < 26000){ const d = Math.sqrt(d2) + 1, push = (1 - (now - fishDisturb.t) / 1800) * 950 / d; vx += dx / d * push; vy += dy / d * push; }
+    }
+    fi.x += vx * k * .5; fi.y += vy * k * .5;
+    if (fi.x < -20) fi.x = VW + 10; else if (fi.x > VW + 20) fi.x = -10;
+    if (fi.y < -20) fi.y = VH + 10; else if (fi.y > VH + 20) fi.y = -10;
+    fi.a = Math.atan2(vy, vx);
+  }
+}
+
+function drawFish(now){
+  vctx.lineCap = "round"; vctx.lineWidth = 1.6;
+  for (let f = 0; f < fish.length; f++){
+    const fi = fish[f], a = fi.a + Math.sin(now * .006 + fi.ph) * .35, len = 6 + fi.sp * .12;
+    const cx = Math.cos(a), sy = Math.sin(a), sh = .55 + .45 * Math.sin(now * .004 + fi.ph * 2);
+    vctx.strokeStyle = `rgba(${200 + sh * 40 | 0},${214 + sh * 30 | 0},${228 + sh * 27 | 0},${(.42 + sh * .42).toFixed(2)})`;
+    vctx.beginPath();
+    vctx.moveTo(fi.x - cx * len, fi.y - sy * len);
+    vctx.lineTo(fi.x + cx * len * .5, fi.y + sy * len * .5);
+    vctx.stroke();
+  }
+}
+
+function spawnPart(kind){
+  if (sceneParts.length >= PART_CAP) return;
+  let x, y, vx = 0, vy = 0, life, size;
+  if (kind === "rain"){ x = Math.random() * VW; y = -10 - Math.random() * VH * .3; vy = 7 + Math.random() * 6; vx = .5; life = 2400; size = 8 + Math.random() * 10; }
+  else if (kind === "foam"){ x = Math.random() * VW; y = VH * (.72 + Math.random() * .28); vy = -.5 - Math.random(); vx = (Math.random() - .5) * .6; life = 2600 + Math.random() * 1800; size = 1.5 + Math.random() * 2.6; }
+  else if (kind === "mote"){ x = Math.random() * VW; y = Math.random() * VH; vy = -.2; vx = (Math.random() - .5) * .3; life = 9000 + Math.random() * 8000; size = .8 + Math.random() * 1.8; }
+  else return;
+  sceneParts.push({ x, y, vx, vy, age: 0, life, kind, size, rot: Math.random(), hit: 0 });
+}
+
+// タップのシーン反応: underwater=群れを割る / shore=しぶき
+function sceneTap(x, y){
+  const sc = scene();
+  if (sc.type === "underwater"){ fishDisturb.x = x; fishDisturb.y = y; fishDisturb.t = performance.now(); return; }
+  if (sc.collision === "foam"){
+    for (let i = 0; i < 4; i++) sceneParts.push({ x: x + (Math.random()-.5)*18, y: y + (Math.random()-.5)*14, vx:(Math.random()-.5)*1.6, vy:-Math.random()*1.8, age:0, life:1200, kind:"foam", size:1.4+Math.random()*2.2, rot:0, hit:0 });
+  }
+}
+
+function updateScene(now, dt){
+  const sc = scene(), k = dt / 16.7;
+  if (sc.type === "underwater") ensureFish(); else if (fish.length){ fish.length = 0; fishBuilt = -1; }
+  const P = sc.particles;
+  if (P && P.kind !== "silver"){
+    const cap = P.max || 200;
+    if (P.kind === "mote"){ if (sceneParts.length < cap && Math.random() < P.rate * k) spawnPart("mote"); }
+    else { let want = P.rate * k, n = Math.floor(want) + (Math.random() < (want % 1) ? 1 : 0); for (let s = 0; s < n && sceneParts.length < cap; s++) spawnPart(P.kind); }
+  }
+  for (let s = sceneParts.length - 1; s >= 0; s--){
+    const pt = sceneParts[s];
+    pt.age += dt;
+    if (pt.kind === "mote"){ sceneFlow("deep", pt.x / VW, pt.y / VH, now, _flow); pt.x += _flow.vx * k * 26 + pt.vx * k; pt.y += _flow.vy * k * 26 + pt.vy * k; }
+    else if (pt.kind === "foam"){ sceneFlow("shore", pt.x / VW, pt.y / VH, now, _flow); pt.x += (_flow.vx * 10 + pt.vx) * k; pt.y += (_flow.vy * 10 + pt.vy) * k; }
+    else { pt.x += pt.vx * k; pt.y += pt.vy * k; } // rain
+    if (pt.kind === "rain" && !pt.hit && pt.y >= VH * (.25 + pt.rot * .65)){
+      sceneParts.push({ x: pt.x, y: pt.y, vx:(Math.random()-.5)*.5, vy:-.4, age:0, life:520, kind:"foam", size:1.1+Math.random()*1.4, rot:0, hit:1 });
+      sceneParts.splice(s, 1); continue;
+    }
+    if (pt.age > pt.life || pt.y > VH + 16 || pt.x < -24 || pt.x > VW + 24) sceneParts.splice(s, 1);
+  }
+  if (sc.type === "underwater") updateFish(now, dt);
+}
+
+function drawScene(now){
+  if (fish.length) drawFish(now);
+  if (!sceneParts.length) return;
+  vctx.globalCompositeOperation = "lighter";
+  for (let s = 0; s < sceneParts.length; s++){
+    const pt = sceneParts[s], kk = 1 - pt.age / pt.life;
+    if (pt.kind === "rain"){
+      vctx.strokeStyle = `rgba(200,224,255,${(.16 * kk).toFixed(2)})`; vctx.lineWidth = 1;
+      vctx.beginPath(); vctx.moveTo(pt.x, pt.y); vctx.lineTo(pt.x - pt.vx * 2, pt.y - pt.size); vctx.stroke();
+    } else {
+      const al = pt.kind === "foam" ? .5 * kk : .30 * kk, col = pt.kind === "foam" ? "230,244,255" : "150,205,235";
+      vctx.fillStyle = `rgba(${col},${al.toFixed(2)})`;
+      vctx.beginPath(); vctx.arc(pt.x, pt.y, pt.size, 0, 6.2832); vctx.fill();
+    }
+  }
+  vctx.globalCompositeOperation = "source-over";
+}
+
+// 衝突FX: 波の干渉点でシーン別の見せ場（泡/光粒/滲み/群れの分離）
+function spawnCollision(x, y, str){
+  const c = scene().collision;
+  if (c === "foam"){ for (let i = 0; i < 3; i++) sceneParts.push({ x: x+(Math.random()-.5)*16, y: y+(Math.random()-.5)*12, vx:(Math.random()-.5)*1.2, vy:-Math.random()*1.4, age:0, life:1300, kind:"foam", size:1.4+Math.random()*2, rot:0, hit:1 }); addGlow(x, y, str * .6, "235,248,255", .7, 12); }
+  else if (c === "raindrop"){ addGlow(x, y, str * .7, "210,232,255", .5, 8); }
+  else if (c === "lightdust"){ addGlow(x, y, str * .9, "150,235,205", 1.6, 14); }
+  else if (c === "split"){ fishDisturb.x = x; fishDisturb.y = y; fishDisturb.t = performance.now(); addGlow(x, y, str * .5, "200,220,240", .8, 12); }
+  else addGlow(x, y, str * .8, "205,220,255", 1.1, 17);
+}
+
+function clearScene(){ sceneParts.length = 0; if (fish.length){ fish.length = 0; fishBuilt = -1; } }
+
+function resetSceneVisuals(){
+  sim.cur.fill(0); sim.prev.fill(0);
+  if (collisionGrid) collisionGrid.fill(0);
+  ripples.length = 0; glows.length = 0;
+  clearScene();
+  const sc = scene(), now = performance.now();
+  if (sc.engine && sc.engine.kind === "shore"){
+    for (let i = 0; i < 3; i++) injectBandImpulse(VH * (.66 + i * .08), .09 + i * .025, 7 + i * 3, now * .002 + i);
+  } else if (sc.engine && sc.engine.kind === "deep"){
+    injectEllipticImpulse(VW * .5, VH * .48, .05, 38, 28, 0);
+  } else if (sc.engine && sc.engine.kind === "rain"){
+    for (let i = 0; i < 18; i++) injectSceneImpulse(Math.random() * VW, Math.random() * VH, .011 + Math.random() * .012, 2.4, { ambient:true });
+  } else if (sc.engine && sc.engine.kind === "silver"){
+    ensureFish();
+  }
+  renderField(now);
+  drawScene(now);
+}
+
+function detectFieldCollisions(now){
+  const sc = scene(), eng = sc.engine || {};
+  const threshold = eng.collisionThreshold || 32;
+  if (threshold > 900 || !collisionGrid || !sim.cur) return;
+  const W = sim.w, H = sim.h, cur = sim.cur, prev = sim.prev;
+  let hits = 0;
+  const stride = eng.kind === "rain" ? 5 : 4;
+  for (let y = stride; y < H - stride && hits < 7; y += stride){
+    for (let x = stride; x < W - stride && hits < 7; x += stride){
+      const i = y * W + x;
+      if (collisionGrid[i] > now) continue;
+      const h = cur[i], dx = cur[i-1] - cur[i+1], dy = cur[i-W] - cur[i+W];
+      const energy = Math.abs(h - prev[i]) * .85 + Math.abs(dx) * .75 + Math.abs(dy) * .75 + Math.abs(h) * .18;
+      if (energy < threshold) continue;
+      const e2 = Math.abs(cur[i-2] - cur[i+2]) + Math.abs(cur[i-W*2] - cur[i+W*2]);
+      if (energy < e2 * .34) continue;
+      const cool = 700 + Math.random() * 900;
+      for (let yy = -stride; yy <= stride; yy += stride){
+        for (let xx = -stride; xx <= stride; xx += stride){
+          const ci = i + yy * W + xx;
+          if (ci >= 0 && ci < collisionGrid.length) collisionGrid[ci] = now + cool;
+        }
+      }
+      spawnCollision(x * sim.cell, y * sim.cell, Math.min(1, energy / (threshold * 2.4)));
+      hits++;
+    }
+  }
+}
+
+/* ---------- 7. 波紋イベント検出 ---------- */
+let rippleSeq = 0;
+const ripples = []; // {id, x, y, born, r, freq, e0, walls, met}
+
+function registerRipple(x, y, freq, e0){
+  ripples.push({ id: rippleSeq++, x, y, born: performance.now(), r: 0,
+                 freq, e0, walls: [false, false, false, false], met: new Set() });
+  if (ripples.length > 24) ripples.shift();
+}
+
+function updateRipples(dtMs, now){
+  const m = mode();
+  const c2 = Math.min(.47, m.c2 * scene().phys.cMul * state.speed * state.speed);
+  const pxPerMs = Math.sqrt(c2) * m.sub * sim.cell * 60 / 1000;
+  const tau = (m.decay + 1.6) * state.life * 1000;
+
+  for (let i = ripples.length - 1; i >= 0; i--){
+    const rp = ripples[i];
+    rp.r += pxPerMs * dtMs;
+    const age = now - rp.born;
+    const e = rp.e0 * Math.exp(-age / tau);
+    if (age > tau * 2.5 || e < .02){ ripples.splice(i, 1); continue; }
+
+    const dists = [rp.x, VW - rp.x, rp.y, VH - rp.y];
+    for (let w = 0; w < 4; w++){
+      if (!rp.walls[w] && rp.r >= dists[w]){
+        rp.walls[w] = true;
+        if (state.reflect > .05) audio.reflect(rp, w, e);
+      }
+    }
+  }
+
+  for (let i = 0; i < ripples.length; i++){
+    for (let j = i + 1; j < ripples.length; j++){
+      const a = ripples[i], b = ripples[j];
+      if (a.met.has(b.id)) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1 && a.r + b.r >= dist){
+        a.met.add(b.id);
+        const k = a.r / (a.r + b.r);
+        const px = a.x + dx * k, py = a.y + dy * k;
+        const eA = a.e0 * Math.exp(-(now - a.born) / 4000);
+        const eB = b.e0 * Math.exp(-(now - b.born) / 4000);
+        const str = Math.min(1, eA * eB * 2);
+        if (str > .05){
+          audio.interfere(a.freq, b.freq, px / VW, str);
+          spawnCollision(px, py, str);
+        }
+      }
+    }
+  }
+}
+
+/* ---------- 8. サウンドエンジン ---------- */
+const audio = (() => {
+  let ctx = null, master = null, limiter = null, dry = null, verb = null, wet = null;
+  let toneLow = null, toneMid = null, toneHigh = null; // 共通TONE EQ（NORMAL/BOWL声部用）
+  let recNode = null, noiseBuf = null, brownBuf = null, pinkBuf = null;
+  let voices = 0; const MAXV = 40;
+  let lastInter = 0;
+
+  // 持続ノイズベッド（CRUISE中にノイズモードで鳴る連続ドローン）
+  let bedLow = null, bedMid = null, bedHigh = null, bedGain = null;
+  let bedSrcs = [], bedSub = null, bedColor = null;
+  // BOWL超低音ドローン（打鍵トリガーで立ち上がる持続低音。同時数を制限して低音飽和を防ぐ）
+  let bowlDrones = []; const BOWL_DRONE_MAX = 3;
+  // 色ごとの基準音量（素材バッファのRMSが色で大きく違うため補正）。つまみと音量で微調整可
+  const BED_LEVEL = { white: .42, pink: 1.5, brown: .7 };
+
+  function ensure(){
+    if (ctx) { if (ctx.state === "suspended") ctx.resume(); return true; }
+    try{
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+
+      master = ctx.createGain();
+      master.gain.value = Math.pow(state.volume, 1.5);
+      limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -14; limiter.knee.value = 18;
+      limiter.ratio.value = 7; limiter.attack.value = .004; limiter.release.value = .24;
+
+      dry = ctx.createGain(); dry.gain.value = 1;
+      verb = ctx.createConvolver(); verb.buffer = makeIR(3.6, 2.4);
+      wet = ctx.createGain(); wet.gain.value = .9;
+
+      // NORMAL/BOWL声部用の共通TONE EQ（3バンド）。dry を必ずこのEQに通してから master へ。
+      // これで BOWL の重低音を音割れ寸前まで TONE BASS で追い込める。ノイズベッドは別系統(bedEQ)でmaster直結。
+      toneLow  = ctx.createBiquadFilter(); toneLow.type  = "lowshelf";  toneLow.frequency.value  = 120;
+      toneMid  = ctx.createBiquadFilter(); toneMid.type  = "peaking";   toneMid.frequency.value  = 1000; toneMid.Q.value = .8;
+      toneHigh = ctx.createBiquadFilter(); toneHigh.type = "highshelf"; toneHigh.frequency.value = 3500;
+      dry.connect(toneLow); toneLow.connect(toneMid); toneMid.connect(toneHigh); toneHigh.connect(master);
+
+      verb.connect(wet); wet.connect(master);
+      master.connect(limiter); limiter.connect(ctx.destination);
+      toneSetEQ();
+
+      // ホワイトノイズ（飛沫・反射・持続ベッド）とブラウンノイズ（グラスボウル）の素材
+      // ベッドで連続ループするため3秒に延ばし、ループの周期感を目立ちにくくする
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
+      const nd = noiseBuf.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+      brownBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const bd = brownBuf.getChannelData(0);
+      let bv = 0;
+      for (let i = 0; i < bd.length; i++){
+        bv = (bv + .02 * (Math.random() * 2 - 1)) / 1.02;
+        bd[i] = bv * 3.5;
+      }
+
+      // ピンクノイズ（Paul Kelletの近似フィルタ）
+      pinkBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const pd = pinkBuf.getChannelData(0);
+      let p0 = 0, p1 = 0, p2 = 0;
+      for (let i = 0; i < pd.length; i++){
+        const w = Math.random() * 2 - 1;
+        p0 = .99765 * p0 + w * .0990460;
+        p1 = .96300 * p1 + w * .2965164;
+        p2 = .57000 * p2 + w * 1.0526913;
+        pd[i] = (p0 + p1 + p2 + w * .1848) * .18;
+      }
+
+      // 持続ノイズベッドの3バンドEQ（低=ローシェルフ / 中=ピーキング / 高=ハイシェルフ）
+      bedLow  = ctx.createBiquadFilter(); bedLow.type  = "lowshelf";  bedLow.frequency.value  = 220;
+      bedMid  = ctx.createBiquadFilter(); bedMid.type  = "peaking";   bedMid.frequency.value  = 1000; bedMid.Q.value = .8;
+      bedHigh = ctx.createBiquadFilter(); bedHigh.type = "highshelf"; bedHigh.frequency.value = 3500;
+      bedGain = ctx.createGain(); bedGain.gain.value = .0001;
+      bedLow.connect(bedMid); bedMid.connect(bedHigh); bedHigh.connect(bedGain);
+      bedGain.connect(master); // ベッドは共通TONE EQを通さず master 直結（NOISE TONE二重がけ回避）
+      noiseBedSetEQ();
+
+      setupRecorderTap();
+      return true;
+    } catch(e){ console.warn("audio init failed:", e); return false; }
+  }
+
+  function makeIR(seconds, decayPow){
+    const len = Math.floor(ctx.sampleRate * seconds);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++){
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++){
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decayPow);
+      }
+    }
+    return buf;
+  }
+
+  /* マスター音量をなめらかに動かす（クリア・クルーズのフェード共用） */
+  function fadeTo(vol01, sec){
+    if (!ctx) return;
+    const g = master.gain, now = ctx.currentTime;
+    const target = Math.max(.0001, Math.pow(Math.max(0, vol01), 1.5));
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(Math.max(.0001, g.value), now);
+    if (sec <= 0) g.setValueAtTime(target, now);
+    else g.linearRampToValueAtTime(target, now + sec);
+  }
+
+  function voiceOut(pan, send, lifeSec){
+    const g = ctx.createGain();
+    const chain = [g];
+    let tail = g;
+    if (ctx.createStereoPanner){
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      g.connect(p); tail = p; chain.push(p);
+    }
+    tail.connect(dry);
+    if (send > 0){
+      const s = ctx.createGain(); s.gain.value = send;
+      tail.connect(s); s.connect(verb); chain.push(s);
+    }
+    // 発音とリバーブ残響が完全に終わった後にノードを切断して解放する。
+    // 長時間運用で voiceOut のゲイン/パンナーが dry へ繋ぎっぱなしに蓄積し、
+    // メモリ/CPUを圧迫してページが固まるのを防ぐ。リバーブIRぶん（約3.6秒）＋余白を見込む。
+    if (lifeSec > 0){
+      setTimeout(() => { for (const n of chain){ try { n.disconnect(); } catch(e){} } },
+                 (lifeSec + 5) * 1000);
+    }
+    return g;
+  }
+
+  function envGain(out, peak, attack, decay, t){
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.linearRampToValueAtTime(Math.max(.0001, peak), t + attack);
+    g.gain.exponentialRampToValueAtTime(.0001, t + attack + decay);
+    g.connect(out);
+    return g;
+  }
+
+  function countVoice(node){
+    voices++;
+    node.onended = () => { voices = Math.max(0, voices - 1); };
+  }
+
+  function osc(type, freq, t, stopAt){
+    const o = ctx.createOscillator();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    o.start(t); o.stop(stopAt);
+    countVoice(o);
+    return o;
+  }
+
+  /* グラスボウル声部: ブラウンノイズ → 高Q共鳴 = 擦られたガラスの鉢 */
+  function bowlVoice(out, f, strength, decay, t, m){
+    for (const [ratio, vol] of m.partials){
+      const src = ctx.createBufferSource();
+      src.buffer = brownBuf; src.loop = true;
+      src.playbackRate.value = .96 + Math.random() * .08;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = Math.min(9000, f * ratio);
+      bp.Q.value = 38;
+      const dur = decay * (1 + ratio * .04);
+      const g = envGain(out, vol * m.bellMix * strength * .6, .28, dur, t);
+      src.connect(bp); bp.connect(g);
+      src.start(t); src.stop(t + dur + .8);
+      countVoice(src);
+    }
+    const g = envGain(out, .05 * strength, .005, .8, t);
+    osc("sine", f, t, t + 1.2).connect(g);
+    // 芯（マレットの「コン…」）: ごく短い帯域ノイズのアタックで打音に心地よい芯を作る
+    const mg = envGain(out, .06 * strength, .001, .05, t);
+    const ms = ctx.createBufferSource(); ms.buffer = noiseBuf;
+    const mbp = ctx.createBiquadFilter();
+    mbp.type = "bandpass"; mbp.frequency.value = Math.min(2600, f * 6); mbp.Q.value = 1.2;
+    ms.connect(mbp); mbp.connect(mg);
+    ms.start(t); ms.stop(t + .12);
+  }
+
+  /* BOWL超低音ドローン: 打鍵でふわりと立ち上がり（0.5s）、約10秒リッチに持続し、
+     約10秒かけてゆっくりしたビブラートを伴い減衰する。デチューンした複数sineのうねり
+     ＋LFOでローパスのカットオフを揺らした濃密な空気感。同時数を制限して低音飽和と
+     クリッピングを防ぐ（最古をクロスフェードで押し出す）。 */
+  function bowlDroneVoice(out, f, strength, t){
+    if (!ctx) return;
+    while (bowlDrones.length >= BOWL_DRONE_MAX){
+      const old = bowlDrones.shift();
+      try { old.release(ctx.currentTime, 1.5); } catch(e){}
+    }
+    const base = Math.max(28, f * 0.5); // 1オクターブ下の超低音（28Hz下限でサブソニック保護）
+    const g = ctx.createGain(); g.gain.value = 0;
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 22; // DC/サブソニック除去
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 300; lp.Q.value = .6;
+    // うねり用LFO（ぶわんぶわん）: カットオフをゆっくり揺らす
+    const lfo = ctx.createOscillator(); lfo.type = "sine"; lfo.frequency.value = .16;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 95;
+    lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start(t);
+    g.connect(hp); hp.connect(lp); lp.connect(out);
+    // デチューンした複数オシレータ（うねり＝バイノーラル風ビート）
+    const oscs = [];
+    const def = [[1, .9, -3.5], [1, .9, 3.5], [2, .32, 0], [0.5, .45, 0]]; // [周波数比, 音量, デチューンcent]
+    for (const [mul, vol, cent] of def){
+      const o = ctx.createOscillator(); o.type = "sine";
+      o.frequency.value = base * mul; o.detune.value = cent;
+      const og = ctx.createGain(); og.gain.value = vol;
+      o.connect(og); og.connect(g);
+      o.start(t); oscs.push(o);
+    }
+    // ゆっくりビブラート（減衰期に効く揺らぎ）: 全oscのdetuneを薄く揺らす
+    const vib = ctx.createOscillator(); vib.type = "sine"; vib.frequency.value = .11;
+    const vibG = ctx.createGain(); vibG.gain.value = 7; // ±7cent
+    vib.connect(vibG); oscs.forEach(o => vibG.connect(o.detune)); vib.start(t);
+    // a案エンベロープ: 0.5s立ち上がり → 約10s持続 → 約10s減衰
+    const peak = Math.min(.2, .12 * strength + .055);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.5);
+    g.gain.setValueAtTime(peak, t + 10.5);
+    g.gain.linearRampToValueAtTime(.0001, t + 20.5);
+    const stopAt = t + 21;
+    const allOsc = [...oscs, lfo, vib];
+    allOsc.forEach(o => o.stop(stopAt));
+    const rec = {
+      release(now, sec){
+        try{
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(Math.max(.0001, g.gain.value), now);
+          g.gain.linearRampToValueAtTime(.0001, now + sec);
+          const s = now + sec + .1;
+          allOsc.forEach(o => { try { o.stop(s); } catch(e){} });
+        }catch(e){}
+      }
+    };
+    bowlDrones.push(rec);
+    setTimeout(() => { const i = bowlDrones.indexOf(rec); if (i >= 0) bowlDrones.splice(i, 1); }, 21500);
+  }
+
+  /* ノイズ声部: 色付きノイズ → 共鳴フィルタ = 音程を持つ風 */
+  function noiseVoice(out, f, strength, decay, t, m){
+    const buf = m.noise === "pink" ? pinkBuf : m.noise === "brown" ? brownBuf : noiseBuf;
+    for (const [ratio, vol, q] of [[1, 1, 24], [2, .3, 18]]){
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      src.playbackRate.value = .97 + Math.random() * .06;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = Math.min(9500, f * ratio);
+      bp.Q.value = q;
+      const g = envGain(out, vol * strength * .7, .04, decay, t);
+      src.connect(bp); bp.connect(g);
+      src.start(t); src.stop(t + decay + .6);
+      countVoice(src);
+    }
+    // 空気のベッド: フィルタの外側をごく薄く
+    const src2 = ctx.createBufferSource(); src2.buffer = buf; src2.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1200;
+    const g2 = envGain(out, .025 * strength, .05, decay * .8, t);
+    src2.connect(lp); lp.connect(g2);
+    src2.start(t); src2.stop(t + decay);
+    countVoice(src2);
+  }
+
+  /* ---------- 持続ノイズベッド ----------
+     従来のノイズは波紋ごとに減衰する音程付きの帯域音で、音圧が出なかった。
+     ここでは選択中のノイズ色を広帯域のまま連続ループさせ、3バンドEQと
+     （ブラウンのみ）サブ低音で「お腹に届く」連続ドローンを作る。 */
+  function noiseBedSetEQ(){
+    if (!bedLow) return;
+    const now = ctx.currentTime;
+    bedLow.gain.setTargetAtTime(state.noiseBass, now, .05);
+    bedMid.gain.setTargetAtTime(state.noiseMid, now, .05);
+    bedHigh.gain.setTargetAtTime(state.noiseTreble, now, .05);
+  }
+
+  /* 共通TONE EQ（NORMAL/BOWL声部）。BOWLの重低音をBASSで追い込むときの主役 */
+  function toneSetEQ(){
+    if (!toneLow) return;
+    const now = ctx.currentTime;
+    toneLow.gain.setTargetAtTime(state.toneBass, now, .05);
+    toneMid.gain.setTargetAtTime(state.toneMid, now, .05);
+    toneHigh.gain.setTargetAtTime(state.toneTreble, now, .05);
+  }
+
+  function noiseBedClearSrcs(delay){
+    const t = ctx.currentTime + Math.max(0, delay || 0);
+    bedSrcs.forEach(s => { try { s.stop(t); } catch(e){} });
+    bedSrcs = [];
+    if (bedSub){ try { bedSub.stop(t); } catch(e){} bedSub = null; }
+  }
+
+  function noiseBedStart(m){
+    if (!ctx || !bedGain) return;
+    const color = m.noise; // "white" | "pink" | "brown"
+    if (bedColor === color && bedSrcs.length) return; // 同じ色で既に鳴っていれば何もしない
+    noiseBedClearSrcs(0); // 色替え時は旧ソースを止める
+    bedColor = color;
+    const buf = color === "pink" ? pinkBuf : color === "brown" ? brownBuf : noiseBuf;
+    // 左右をわずかにデチューンして広がり＋ループの周期感をぼかす
+    for (const [rate, pan] of [[.991, -.6], [1.009, .6]]){
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      src.playbackRate.value = rate;
+      let node = src;
+      if (ctx.createStereoPanner){
+        const p = ctx.createStereoPanner(); p.pan.value = pan;
+        src.connect(p); node = p;
+      }
+      node.connect(bedLow);
+      src.start();
+      bedSrcs.push(src);
+    }
+    // ブラウンだけ48Hzのサブ低音を薄く重ねて芯を補強（お腹に届く成分）
+    if (color === "brown"){
+      bedSub = ctx.createOscillator(); bedSub.type = "sine"; bedSub.frequency.value = 48;
+      const sg = ctx.createGain(); sg.gain.value = .12;
+      bedSub.connect(sg); sg.connect(bedLow);
+      bedSub.start();
+    }
+    // フェードイン
+    const now = ctx.currentTime, target = BED_LEVEL[color] || .5;
+    bedGain.gain.cancelScheduledValues(now);
+    bedGain.gain.setValueAtTime(Math.max(.0001, bedGain.gain.value), now);
+    bedGain.gain.linearRampToValueAtTime(target, now + 2.5);
+  }
+
+  function noiseBedStop(fadeSec){
+    if (!ctx || !bedGain || !bedSrcs.length) return;
+    const s = fadeSec || 2.5, now = ctx.currentTime;
+    bedGain.gain.cancelScheduledValues(now);
+    bedGain.gain.setValueAtTime(Math.max(.0001, bedGain.gain.value), now);
+    bedGain.gain.linearRampToValueAtTime(.0001, now + s);
+    noiseBedClearSrcs(s + .1);
+    bedColor = null;
+  }
+
+  /* 再生状態と現在モードからベッドの入切を決める。
+     active = CRUISE が動いているか。ノイズモード以外、または停止中は消す。 */
+  function syncNoiseBed(active, fadeSec){
+    if (!ctx) return;
+    const m = mode();
+    if (active && m.voice === "noise") noiseBedStart(m);
+    else noiseBedStop(fadeSec);
+  }
+
+  /* 波紋の発生音。ジャンルの tweak で音色にメリハリを付ける */
+  function tap(x01, y01, strength, freq, light){
+    if (!ensure() || voices > MAXV) return;
+    const m = mode();
+    const tw = genre().tweak || {};
+    const f = freq || 440;
+    const t = ctx.currentTime + .005;
+    const pan = (x01 * 2 - 1) * .75;
+    let decay = m.decay * (tw.decay || 1) * (0.75 + Math.random() * .5) * Math.min(state.life, 1.6);
+    if (light) decay *= .45;
+    if (state.sustain) decay *= 2.6; // SUSTAIN: ロングトーン
+    // voiceOut には発音寿命を渡して終了後にノードを解放させる。
+    // BOWLのドローンは約21秒鳴るため、通常打音のdecay基準で接続が先に切れないよう寿命を確保する。
+    const voiceLife = (m.voice === "bowl" && !light) ? Math.max(decay + 1, 22) : decay + 1;
+    const out = voiceOut(pan, m.send * (tw.send || 1) * (light ? .7 : 1), voiceLife);
+    const atk = m.atkOver || tw.atk || .004;
+
+    // ローファイ等: 声部全体を柔らかくするローパス
+    let tapOut = out;
+    if (tw.lp){
+      const lpf = ctx.createBiquadFilter();
+      lpf.type = "lowpass"; lpf.frequency.value = tw.lp; lpf.Q.value = .7;
+      lpf.connect(out); tapOut = lpf;
+    }
+
+    if (m.voice === "bowl" && !light){
+      bowlVoice(tapOut, f, strength, decay, t, m);
+      bowlDroneVoice(tapOut, f, strength, t); // お腹に響く超低音ドローン（打鍵トリガー）
+    } else if (m.voice === "noise" && !light){
+      noiseVoice(tapOut, f, strength, decay, t, m);
+    } else {
+      const parts = light ? m.partials.slice(0, 1) : m.partials;
+      const bellAmp = light ? .07 : .14;
+      for (const [ratio, vol] of parts){
+        const g = envGain(tapOut, vol * m.bellMix * strength * bellAmp, atk,
+                          decay * (1 - .25 * Math.log2(Math.max(1, ratio))), t);
+        osc("sine", f * ratio, t, t + decay + .6).connect(g);
+        // デチューンの双子（ロック・シティポップの厚み）
+        if (tw.det && ratio === 1 && !light){
+          const g2 = envGain(tapOut, vol * m.bellMix * strength * bellAmp * .5, atk, decay, t);
+          osc("sine", f * Math.pow(2, tw.det / 1200), t, t + decay + .6).connect(g2);
+        }
+      }
+      // サブ低音（ハウス・DnBの土台）
+      if (tw.sub && !light){
+        const g = envGain(tapOut, .06 * tw.sub * strength, .006, decay * .6, t);
+        osc("sine", f * .5, t, t + decay + .4).connect(g);
+      }
+      // バチの打撃音（木琴の「コッ」・鉄琴の「チン」）
+      if (m.knock && !light){
+        const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass"; bp.frequency.value = Math.min(9000, f * 2.2); bp.Q.value = 1.6;
+        const g = envGain(tapOut, .07 * m.knock * strength, .001, .045, t);
+        src.connect(bp); bp.connect(g);
+        src.start(t); src.stop(t + .1);
+      }
+    }
+    // 水滴成分: 周波数が短く上がる "plip"
+    if (m.dropMix > 0){
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f * .5, t);
+      o.frequency.exponentialRampToValueAtTime(f * 1.04, t + .06);
+      const g = envGain(tapOut, .13 * m.dropMix * (tw.drop || 1) * strength * (light ? .7 : 1), .003, .16, t);
+      o.connect(g); o.start(t); o.stop(t + .35);
+      countVoice(o);
+    }
+    // 飛沫: 帯域ノイズの短い吐息
+    if (m.splash > 0 && !light){
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = Math.min(8000, f * 3.5); bp.Q.value = 5;
+      const g = envGain(tapOut, .05 * m.splash * strength, .002, .14, t);
+      src.connect(bp); bp.connect(g);
+      src.start(t); src.stop(t + .25);
+    }
+  }
+
+  /* 反射音: 壁側にパンした微かなチック */
+  function reflect(rp, wall, e){
+    if (!ensure() || voices > MAXV) return;
+    const m = mode();
+    if (m.voice === "noise") return; // ノイズモード中は音程付きの反射音を鳴らさない（環境音の邪魔・負荷削減）
+    const t = ctx.currentTime + .005;
+    const vol = e * state.reflect * m.reflGain * .07;
+    if (vol < .003) return;
+    const pan = wall === 0 ? -.8 : wall === 1 ? .8 : (rp.x / VW * 2 - 1) * .6;
+    // 反射音は「いまそこにあるコード」へ吸着して跳ね返る
+    const wx01 = wall === 0 ? .02 : wall === 1 ? .98 : rp.x / VW;
+    let rf = rp.freq * 2.01;
+    if (state.assist) rf = nearestTone(rf, currentLadder(wx01)); // ONは必ず心地良い音へ
+    const out = voiceOut(pan, m.send * .7, 1);
+    const g = envGain(out, vol, .003, .5, t);
+    osc("sine", rf, t, t + .9).connect(g);
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 3000;
+    const g2 = envGain(out, vol * .5, .002, .08, t);
+    src.connect(hp); hp.connect(g2);
+    src.start(t); src.stop(t + .15);
+  }
+
+  /* 干渉音: 二つの波の音をひとつの和音に。アシストON時は梯子へ吸着 */
+  function interfere(f1, f2, x01, strength){
+    if (!ensure() || voices > MAXV - 4) return;
+    const now = performance.now();
+    if (now - lastInter < 130) return;
+    lastInter = now;
+    const m = mode();
+    const t = ctx.currentTime + .005;
+    const pan = (x01 * 2 - 1) * .6;
+    const base = strength * m.interGain;
+
+    if (m.id === "resonance"){
+      const out = voiceOut(pan, .65, 3);
+      let third = (f1 + f2) / 2 * 1.5;
+      if (state.assist) third = nearestTone(third, currentLadder(x01));
+      for (const [f, v] of [[f1, .05], [f2, .05], [third, .02]]){
+        const g = envGain(out, v * base, .22, 2.4, t);
+        osc("sine", f * Math.pow(2, (Math.random() * 4 - 2) / 1200), t, t + 3).connect(g);
+      }
+    } else {
+      let fm = (f1 + f2) / 2;
+      if (state.assist) fm = nearestTone(fm, currentLadder(x01));
+      const out = voiceOut(pan, m.send, 2);
+      const g = envGain(out, .035 * base, .12, 1.5, t);
+      osc("sine", fm, t, t + 2).connect(g);
+    }
+  }
+
+  /* 録音タップ: limiter後 = 実際に聴こえる音をそのまま捕まえる */
+  function setupRecorderTap(){
+    try{
+      recNode = ctx.createScriptProcessor(4096, 2, 2);
+      recNode.onaudioprocess = (e) => {
+        if (!rec.active) return;
+        rec.L.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        rec.R.push(new Float32Array(e.inputBuffer.getChannelData(1)));
+        rec.len += e.inputBuffer.length;
+      };
+      limiter.connect(recNode);
+      const sink = ctx.createGain(); sink.gain.value = 0;
+      recNode.connect(sink); sink.connect(ctx.destination);
+    } catch(e){ console.warn("recorder tap failed:", e); }
+  }
+
+  function setVolume(v){ if (master) fadeTo(v, .12); }
+  function sampleRate(){ return ctx ? ctx.sampleRate : 44100; }
+  function running(){ return !!ctx && ctx.state === "running"; }
+  function sounding(){ return running() && (voices > 0 || bedSrcs.length > 0 || bowlDrones.length > 0); }
+
+  /* ページ離脱時の保険: 持続ベッドを止め、AudioContextを停止して音を残さない。
+     （通常タブを閉じれば破棄されるが、bfcache等で残るケースへの備え） */
+  function teardown(){
+    try { noiseBedStop(0); } catch(e){}
+    try { const now = ctx ? ctx.currentTime : 0; bowlDrones.forEach(d => { try { d.release(now, .3); } catch(e){} }); bowlDrones = []; } catch(e){}
+    try { if (ctx && ctx.state === "running") ctx.suspend(); } catch(e){}
+  }
+
+  return { ensure, tap, reflect, interfere, setVolume, sampleRate, fadeTo,
+           noiseBedSetEQ, toneSetEQ, syncNoiseBed, teardown, running, sounding };
+})();
+
+// ページを閉じる / 離脱するときに音を確実に止める
+window.addEventListener("pagehide", () => { try { audio.teardown(); } catch(e){} });
+
+/* ---------- 9. 録音と WAV 書き出し ---------- */
+const rec = { active: false, L: [], R: [], len: 0, startedAt: 0 };
+
+function recStart(){
+  if (!audio.ensure()) return;
+  rec.L = []; rec.R = []; rec.len = 0;
+  rec.active = true; rec.startedAt = performance.now();
+  ui.recState();
+}
+function recStop(){
+  rec.active = false;
+  ui.recState();
+}
+function recSave(){
+  if (rec.active) recStop();
+  if (rec.len === 0) return;
+  const blob = encodeWav(rec.L, rec.R, rec.len, audio.sampleRate());
+  const a = document.createElement("a");
+  const ts = new Date(), p = n => String(n).padStart(2, "0");
+  a.download = `ripple-garden_take_${ts.getFullYear()}${p(ts.getMonth()+1)}${p(ts.getDate())}_${p(ts.getHours())}${p(ts.getMinutes())}${p(ts.getSeconds())}.wav`;
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* Float32のチャンク列を16bitステレオPCMのWAVに変換 */
+function encodeWav(chunksL, chunksR, totalLen, sampleRate){
+  const buf = new ArrayBuffer(44 + totalLen * 4);
+  const dv = new DataView(buf);
+  const wstr = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); dv.setUint32(4, 36 + totalLen * 4, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);
+  dv.setUint16(22, 2, true);
+  dv.setUint32(24, sampleRate, true);
+  dv.setUint32(28, sampleRate * 4, true);
+  dv.setUint16(32, 4, true);
+  dv.setUint16(34, 16, true);
+  wstr(36, "data"); dv.setUint32(40, totalLen * 4, true);
+
+  let off = 44;
+  for (let c = 0; c < chunksL.length; c++){
+    const L = chunksL[c], R = chunksR[c];
+    for (let i = 0; i < L.length; i++){
+      let l = Math.max(-1, Math.min(1, L[i])), r = Math.max(-1, Math.min(1, R[i]));
+      dv.setInt16(off, l < 0 ? l * 0x8000 : l * 0x7FFF, true); off += 2;
+      dv.setInt16(off, r < 0 ? r * 0x8000 : r * 0x7FFF, true); off += 2;
+    }
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+/* ---------- 10. クルーズエンジン ---------- */
+/* YouTubeの長尺環境音のように、水面がひとりで演奏を続ける。
+   ジャンルのリズムパターン（16分×16歩）を刻み、小節ごとにコード列が進む */
+const cruise = {
+  on:false, stopping:false, loop:false, shuffle:false,
+  t0:0, endAt:Infinity, nextStep:0, step:0, bar:0,
+  y01:.5, nextFree:0, lastShuffle:0, runQueue:[],
+};
+
+function cruiseStart(){
+  if (!audio.ensure() || cruise.on) return;
+  cruise.on = true; cruise.stopping = false;
+  cruise.t0 = performance.now();
+  cruise.endAt = cruise.loop ? Infinity : cruise.t0 + state.cruiseMin * 60000;
+  cruise.step = 0; cruise.bar = 0; cruise.y01 = .45 + Math.random() * .2;
+  cruise.nextStep = cruise.t0 + 500;
+  cruise.nextFree = cruise.t0 + 500;
+  cruise.lastShuffle = cruise.t0;
+  cruise.runQueue.length = 0;
+  lastAutoClean = cruise.t0; // 自動クリーンのタイマーをクルーズ開始から数える
+  audio.fadeTo(0, 0);
+  audio.fadeTo(state.volume, 3); // 音のフェードイン
+  audio.syncNoiseBed(true); // ノイズモードなら持続ベッドを立ち上げる
+  ui.cruiseState();
+  ui.dismissHint();
+}
+
+function cruiseStop(fadeSec){
+  if (!cruise.on || cruise.stopping) return;
+  cruise.stopping = true;
+  const sec = fadeSec || 2.5;
+  audio.fadeTo(0, sec); // 音のフェードアウト
+  audio.syncNoiseBed(false, sec); // 持続ベッドも同じ長さで看取る
+  setTimeout(() => {
+    cruise.on = false; cruise.stopping = false;
+    audio.fadeTo(state.volume, 1.5); // 手弾き用に音を戻す
+    ui.cruiseState();
+  }, sec * 1000);
+}
+
+/* クルーズの一滴: コード列の帯の中に落とし、旋律は上下にゆっくり散歩する */
+function cruiseDrop(vel, light){
+  const g = genre();
+  let x;
+  if (g.prog){
+    const col = cruise.bar % g.prog.length; // 小節ごとにコードが進む
+    x = (col + .14 + Math.random() * .72) * (VW / g.prog.length);
+  } else {
+    x = (0.08 + Math.random() * .84) * VW;
+  }
+  cruise.y01 = Math.max(.08, Math.min(.92, cruise.y01 + (Math.random() - .5) * .2));
+  const y = cruise.y01 * VH;
+  spawnDrop(x, y, (.5 + vel * .45) * (.85 + Math.random() * .3), { light }); // 強さも人間的に揺らす
+  // 強拍ではときどき分散和音の駆け上がり
+  if (!light && vel >= .8 && Math.random() < .18 && g.prog){
+    const stepDur = 60000 / g.bpm / 4;
+    for (let n = 1; n <= 3; n++){
+      cruise.runQueue.push({ t: performance.now() + stepDur * n, x: x + n * 14, y: y - n * 10 });
+    }
+  }
+}
+
+function cruiseTick(now){
+  if (!cruise.on || cruise.stopping) return;
+
+  // タイマー満了 → 8秒かけて光と音を看取る
+  if (now >= cruise.endAt){
+    cruiseStop(8);
+    ui.toast(T().cruiseEnd);
+    return;
+  }
+
+  const g = genre();
+  if (g.pattern){
+    const stepDur = 60000 / g.bpm / 4;
+    while (now >= cruise.nextStep){
+      const v = g.pattern[cruise.step % 16];
+      if (v > 0 && Math.random() < .94) cruiseDrop(v, v < .5);
+      cruise.step++;
+      if (cruise.step % 16 === 0) cruise.bar++;
+      // スウィング: 裏の16分を後ろへもたれさせる
+      const swing = (cruise.step % 2 === 1) ? g.swing * stepDur : -((g.swing * stepDur) * .5);
+      const human = state.assist ? 0 : (Math.random() - .5) * (g.friction || 0) * 120; // 刻みの人間的なよれ
+      cruise.nextStep += stepDur + swing + human;
+    }
+  } else {
+    // 拍を持たないジャンル（FREE / AMBIENT）はポアソン的に
+    if (now >= cruise.nextFree){
+      cruiseDrop(.5 + Math.random() * .5, Math.random() < .4);
+      const density = g.density || 1;
+      cruise.nextFree = now + (1600 + Math.random() * 3800) / density;
+      if (cruise.step++ % 4 === 3) cruise.bar++;
+    }
+  }
+
+  // 駆け上がりキュー
+  while (cruise.runQueue.length && cruise.runQueue[0].t <= now){
+    const q = cruise.runQueue.shift();
+    const f = pitchAt(q.x / VW, q.y / VH, 1);
+    spawnDrop(q.x, q.y, .4, { light: true, freq: f });
+  }
+
+  // シャッフル: 40〜70秒ごとにジャンルかモードがゆっくり入れ替わる
+  if (cruise.shuffle && now - cruise.lastShuffle > 40000 + Math.random() * 30000){
+    cruiseShuffleNow();
+  }
+}
+
+/* シャッフルの一手: ジャンルかモード（ノイズ除外）をひとつ切り替える。
+   クルーズの定期シャッフルと、③「次の曲」ボタンの能動発火で共用する。 */
+function cruiseShuffleNow(){
+  cruise.lastShuffle = performance.now();
+  if (Math.random() < .6){
+    const next = 1 + Math.floor(Math.random() * (GENRES.length - 1));
+    ui.setGenre(next);
+    ui.toast(GENRES[next].label[state.lang].split("—")[0].trim());
+  } else {
+    // 音浴(BATH)グループ（ノイズ3色＋BOWL）はシャッフル対象から除外（性格が違いすぎて驚くため）
+    const pool = MODES.map((_, i) => i).filter(i => !inNoiseGroup(MODES[i]));
+    const next = pool[Math.floor(Math.random() * pool.length)];
+    ui.setMode(next);
+    ui.toast(MODES[next].name + " · " + MODES[next].jp);
+  }
+}
+
+/* ---------- 11. UI と入力 ---------- */
+let spawnDrop = () => {}; // 入力セクションで実体を与える（クルーズと共有）
+
+const ui = (() => {
+  const normalModeIndices = MODES.map((m, i) => inNoiseGroup(m) ? -1 : i).filter(i => i >= 0);
+  const noiseModeIndices = ["bowl", "white", "pink", "brown"].map(id => MODES.findIndex(m => m.id === id));
+  const modeNormal = document.getElementById("modeNormal");
+  const modeNoise = document.getElementById("modeNoise");
+  const normalModeWrap = document.getElementById("normalModeWrap");
+  const noiseModeWrap = document.getElementById("noiseModeWrap");
+  const selNormalMode = document.getElementById("selNormalMode");
+  const selNoiseMode = document.getElementById("selNoiseMode");
+  const badge = document.getElementById("recBadge");
+  const cruiseBadge = document.getElementById("cruiseBadge");
+  const hint = document.getElementById("hint");
+  const chordEl = document.getElementById("chordName");
+  // v011 パネルv2: モード連動セクション / CRUISEトランスポート / WATER(ECO)トグル
+  const harmonySec = document.getElementById("harmonySec");
+  const noiseToneSec = document.getElementById("noiseToneSec");
+  const sToneBass = document.getElementById("sNoiseBass");
+  const sToneMid  = document.getElementById("sNoiseMid");
+  const sToneHigh = document.getElementById("sNoiseHigh");
+  const btnNext = document.getElementById("btnNext");
+  const btnRepeat = document.getElementById("btnRepeat");
+  const btnShuffle = document.getElementById("btnShuffle");
+  const waterToggle = document.getElementById("waterToggle");
+  const ctlLife = document.getElementById("ctlLife");
+  const ctlSpeed = document.getElementById("ctlSpeed");
+  const ctlReflect = document.getElementById("ctlReflect");
+  const toastEl = document.getElementById("toast");
+  const btnRec = document.getElementById("btnRec");
+  const btnStop = document.getElementById("btnStop");
+  const btnWav = document.getElementById("btnWav");
+  const btnCruise = document.getElementById("btnCruise");
+  const selGenre = document.getElementById("selGenre");
+  const selScene = document.getElementById("selScene");
+  const selTheme = document.getElementById("selTheme");
+  const selLang = document.getElementById("selLang");
+  let chordTimer = null, toastTimer = null;
+
+  /* --- モード: グループ境界と個別音色を分けて扱う --- */
+  let lastNormalMode = normalModeIndices[0];
+  let lastNoiseMode = noiseModeIndices[0];
+  // サブラベル: 多言語キャプション(cap)があれば言語別、無ければ従来の jp 固定
+  const modeSub = (m) => (m.cap && m.cap[state.lang]) ? m.cap[state.lang] : m.jp;
+  const fillModeSelect = (select, indices) => {
+    const keep = select.value;
+    select.innerHTML = "";
+    indices.forEach(i => {
+      const m = MODES[i], op = document.createElement("option");
+      op.value = String(i); op.textContent = `${m.name} — ${modeSub(m)}`;
+      select.appendChild(op);
+    });
+    if (keep) select.value = keep;
+  };
+  fillModeSelect(selNormalMode, normalModeIndices);
+  fillModeSelect(selNoiseMode, noiseModeIndices);
+
+  function updateModeUI(){
+    const isNoise = inNoiseGroup(mode());
+    modeNormal.classList.toggle("active", !isNoise);
+    modeNoise.classList.toggle("active", isNoise);
+    modeNormal.setAttribute("aria-pressed", isNoise ? "false" : "true");
+    modeNoise.setAttribute("aria-pressed", isNoise ? "true" : "false");
+    normalModeWrap.classList.toggle("disabled", isNoise);
+    noiseModeWrap.classList.toggle("disabled", !isNoise);
+    selNormalMode.disabled = isNoise;
+    selNoiseMode.disabled = !isNoise;
+    selNormalMode.value = String(lastNormalMode);
+    selNoiseMode.value = String(lastNoiseMode);
+    // HARMONY(コード進行)はNORMALのみ。TONEは常時表示し、中身をモードで切り替える。
+    harmonySec.hidden = isNoise;
+    noiseToneSec.hidden = false;
+    // TONEスライダーの値を現モードのEQ値へ同期（NOISE=持続ベッド用 / NORMAL=通常&BOWL声部用）
+    sToneBass.value = isNoise ? state.noiseBass : state.toneBass;
+    sToneMid.value  = isNoise ? state.noiseMid  : state.toneMid;
+    sToneHigh.value = isNoise ? state.noiseTreble : state.toneTreble;
+  }
+
+  function updateShuffleUI(){
+    const isNoise = inNoiseGroup(mode());
+    // SHUFFLEは音浴(BATH)時に無効・グレーアウト。次の曲はSHUFFLE ONかつNORMALのときだけ有効
+    btnShuffle.disabled = isNoise;
+    btnShuffle.setAttribute("aria-pressed", (cruise.shuffle && !isNoise) ? "true" : "false");
+    btnNext.disabled = isNoise || !cruise.shuffle;
+  }
+
+  const modeConfirm = document.getElementById("modeConfirm");
+  const modeConfirmText = document.getElementById("modeConfirmText");
+  const modeConfirmYes = document.getElementById("modeConfirmYes");
+  const modeConfirmNo = document.getElementById("modeConfirmNo");
+  let pendingMode = null;
+
+  function applyMode(nextIdx){
+    const wasNoise = inNoiseGroup(MODES[state.modeIdx]);
+    const nowNoise = inNoiseGroup(MODES[nextIdx]);
+    state.modeIdx = nextIdx;
+    if (nowNoise) lastNoiseMode = nextIdx; else lastNormalMode = nextIdx;
+    // NORMAL→音浴(BATH=ノイズ3色＋BOWL)は爆音になりやすいので音量を約10%へ強制的に絞る。
+    // 音浴→NORMALへ戻るときは、絞る前の音量へ復帰する。
+    if (nowNoise && !wasNoise){
+      state._volBeforeNoise = state.volume;
+      applyVolume(.1);
+      state._shuffleBeforeNoise = cruise.shuffle;
+      cruise.shuffle = false;
+    } else if (!nowNoise && wasNoise){
+      if (state._volBeforeNoise != null) applyVolume(state._volBeforeNoise);
+      state._volBeforeNoise = null;
+      if (state._shuffleBeforeNoise != null) cruise.shuffle = state._shuffleBeforeNoise;
+      state._shuffleBeforeNoise = null;
+      cruise.lastShuffle = performance.now();
+    }
+    updateModeUI();
+    updateShuffleUI();
+    resetMelody();
+    audio.syncNoiseBed(cruise.on); // CRUISE中にノイズへ/から切り替えたらベッドも追従
+    return true;
+  }
+
+  function setMode(i){
+    const nextIdx = Math.max(0, Math.min(MODES.length - 1, i));
+    // 確認は NORMAL ↔ 音浴(BATH) の境界を越える時だけ（性格が大きく違うため必ず注意を促す）。
+    // グループ内の切替では出さない。
+    const crossing = inNoiseGroup(MODES[state.modeIdx]) !== inNoiseGroup(MODES[nextIdx]);
+    if (crossing && (cruise.on || audio.sounding())){
+      pendingMode = nextIdx;
+      modeConfirmText.textContent = inNoiseGroup(MODES[nextIdx])
+        ? T().confirmToBath
+        : T().confirmFromBath;
+      modeConfirm.hidden = false;
+      modeConfirmNo.focus();
+      return false;
+    }
+    return applyMode(nextIdx);
+  }
+
+  function closeModeConfirm(apply){
+    const nextIdx = pendingMode;
+    pendingMode = null;
+    modeConfirm.hidden = true;
+    if (apply && nextIdx != null) applyMode(nextIdx);
+    else updateModeUI();
+  }
+  modeConfirmYes.addEventListener("click", () => closeModeConfirm(true));
+  modeConfirmNo.addEventListener("click", () => closeModeConfirm(false));
+  modeConfirm.addEventListener("click", (e) => { if (e.target === modeConfirm) closeModeConfirm(false); });
+
+  modeNormal.addEventListener("click", () => { setMode(lastNormalMode); modeNormal.blur(); });
+  modeNoise.addEventListener("click", () => { setMode(lastNoiseMode); modeNoise.blur(); });
+  selNormalMode.addEventListener("change", () => { setMode(parseInt(selNormalMode.value, 10)); selNormalMode.blur(); });
+  selNoiseMode.addEventListener("change", () => { setMode(parseInt(selNoiseMode.value, 10)); selNoiseMode.blur(); });
+
+  /* 音量を state・スライダーUI・実音へまとめて反映（モード切替の自動調整で共用） */
+  function applyVolume(v){
+    state.volume = v;
+    const el = document.getElementById("sVolume");
+    if (el) el.value = String(v);
+    if (!cruise.stopping && !fadeClear.active) audio.setVolume(v);
+  }
+
+  /* --- ジャンル --- */
+  function buildGenres(){
+    selGenre.innerHTML = "";
+    GENRES.forEach((g, i) => {
+      const op = document.createElement("option");
+      op.value = i; op.textContent = g.label[state.lang] || g.label.ja;
+      selGenre.appendChild(op);
+    });
+    selGenre.value = String(state.genreIdx);
+  }
+  function setGenre(i){
+    state.genreIdx = Math.max(0, Math.min(GENRES.length - 1, i));
+    selGenre.value = String(state.genreIdx);
+    resetMelody();
+  }
+  selGenre.addEventListener("change", () => {
+    setGenre(parseInt(selGenre.value, 10) || 0);
+    selGenre.blur(); // スペース奏法がセレクトに食われないように
+  });
+
+  /* --- アシスト --- */
+  const assistEl = document.getElementById("assistToggle");
+  assistEl.addEventListener("click", () => {
+    state.assist = !state.assist;
+    assistEl.classList.toggle("off", !state.assist);
+    assistEl.querySelector(".a-state").textContent = state.assist ? "ON" : "OFF";
+    resetMelody();
+  });
+
+  /* --- SUSTAIN（ロングトーン） --- */
+  const sustainEl = document.getElementById("sustainToggle");
+  sustainEl.addEventListener("click", () => {
+    state.sustain = !state.sustain;
+    sustainEl.classList.toggle("off", !state.sustain);
+    sustainEl.querySelector(".a-state").textContent = state.sustain ? "ON" : "OFF";
+  });
+
+  /* --- スライダー --- */
+  const bind = (id, key, fn) => {
+    const el = document.getElementById(id);
+    el.addEventListener("input", () => { state[key] = parseFloat(el.value); if (fn) fn(state[key]); });
+  };
+  bind("sLife", "life");
+  bind("sSpeed", "speed");
+  bind("sReflect", "reflect");
+  bind("sVolume", "volume", v => { if (!cruise.stopping && !fadeClear.active) audio.setVolume(v); });
+  // TONE: 同じUIで対象をモード別に切替（NOISE=持続ベッドEQ / NORMAL=共通EQでBOWLの重低音を追い込む）
+  const bindTone = (el, noiseKey, toneKey) => {
+    el.addEventListener("input", () => {
+      const v = parseFloat(el.value);
+      if (mode().voice === "noise"){ state[noiseKey] = v; audio.noiseBedSetEQ(); }
+      else { state[toneKey] = v; audio.toneSetEQ(); }
+    });
+  };
+  bindTone(sToneBass, "noiseBass", "toneBass");
+  bindTone(sToneMid,  "noiseMid",  "toneMid");
+  bindTone(sToneHigh, "noiseTreble", "toneTreble");
+
+  /* --- クルーズ（③ プレイヤー型トランスポート: ▶/■・次・リピート・シャッフル） --- */
+  const sCruise = document.getElementById("sCruise");
+  const cruiseVal = document.getElementById("cruiseVal");
+  const cruiseTimeRow = document.getElementById("cruiseTimeRow");
+  const SVG_PLAY = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><polygon points="7,5 19,12 7,19" fill="currentColor"/></svg>';
+  const SVG_STOP = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></svg>';
+  sCruise.addEventListener("input", () => {
+    state.cruiseMin = parseInt(sCruise.value, 10);
+    cruiseVal.textContent = state.cruiseMin + "m";
+  });
+  // REPEAT = 無限ループ。ON=∞ループ / OFF=TIMEで自動終了（TIME行を沈める）
+  btnRepeat.addEventListener("click", () => {
+    cruise.loop = !cruise.loop;
+    btnRepeat.setAttribute("aria-pressed", cruise.loop ? "true" : "false");
+    cruiseTimeRow.classList.toggle("dim", cruise.loop);
+    if (cruise.on) cruise.endAt = cruise.loop ? Infinity : cruise.t0 + state.cruiseMin * 60000;
+  });
+  // SHUFFLE（NOISE時は無効）
+  btnShuffle.addEventListener("click", () => {
+    if (mode().voice === "noise") return;
+    cruise.shuffle = !cruise.shuffle;
+    if (!cruise.shuffle) cruise.lastShuffle = performance.now();
+    updateShuffleUI();
+  });
+  // 次の曲: シャッフルの切替を能動発火（SHUFFLE ON かつ NORMAL のときだけ）
+  btnNext.addEventListener("click", () => {
+    if (btnNext.disabled) return;
+    cruiseShuffleNow();
+  });
+  btnCruise.addEventListener("click", () => { cruise.on ? cruiseStop() : cruiseStart(); });
+
+  function cruiseState(){
+    const playing = cruise.on;
+    btnCruise.classList.toggle("running", playing);
+    btnCruise.innerHTML = playing ? SVG_STOP : SVG_PLAY;
+    btnCruise.setAttribute("aria-label", playing ? "停止" : "再生");
+    cruiseBadge.classList.toggle("on", playing);
+  }
+
+  /* --- ⑤ WATER(動的グラフィック) ON/OFF = 低電力ECO --- */
+  function applyWater(){
+    const on = state.water;
+    waterToggle.classList.toggle("off", !on);
+    waterToggle.querySelector(".a-state").textContent = on ? "ON" : "OFF";
+    ctlLife.classList.toggle("dim", !on);
+    ctlSpeed.classList.toggle("dim", !on);
+    ctlReflect.classList.toggle("dim", !on);
+    if (!on){
+      // 波面を静めて一度だけ描画（以降フレームは描画スキップ＝省電力）
+      sim.cur.fill(0); sim.prev.fill(0);
+      ripples.length = 0; glows.length = 0;
+      renderField(performance.now());
+    }
+  }
+  waterToggle.addEventListener("click", () => { state.water = !state.water; applyWater(); });
+
+  /* --- 録音 --- */
+  btnRec.addEventListener("click", recStart);
+  btnStop.addEventListener("click", recStop);
+  btnWav.addEventListener("click", recSave);
+  document.getElementById("btnClear").addEventListener("click", clearWater);
+
+  // ボタンにフォーカスが残るとスペースキーが誤爆するので外す
+  document.getElementById("panel").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (b) b.blur();
+  });
+
+  function recState(){
+    btnRec.classList.toggle("recording", rec.active);
+    btnRec.disabled = rec.active;
+    btnStop.disabled = !rec.active;
+    btnWav.disabled = rec.active || rec.len === 0;
+    badge.classList.toggle("on", rec.active);
+  }
+
+  const fmt = (ms) => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : String(m).padStart(2, "0")) + ":" + String(ss).padStart(2, "0");
+  };
+
+  function badges(now){
+    if (rec.active) badge.textContent = "REC " + fmt(now - rec.startedAt);
+    if (cruise.on){
+      cruiseBadge.textContent = cruise.loop
+        ? "CRUISE " + fmt(now - cruise.t0) + " ∞"
+        : "CRUISE −" + fmt(cruise.endAt - now);
+    }
+  }
+
+  /* --- コードネーム / トースト --- */
+  function showChord(x01){
+    const g = genre();
+    if (!g.names) return;
+    chordEl.textContent = g.names[columnAt(x01)];
+    chordEl.classList.add("on");
+    clearTimeout(chordTimer);
+    chordTimer = setTimeout(() => chordEl.classList.remove("on"), 1400);
+  }
+  function toast(text){
+    toastEl.textContent = text;
+    toastEl.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("on"), 2600);
+  }
+
+  /* --- タブ --- */
+  const readers = { journal: document.getElementById("readerJournal"), about: document.getElementById("readerAbout") };
+  const tabBtns = [...document.querySelectorAll("#tabs .tab")];
+  function switchTab(v){
+    state.tab = v;
+    tabBtns.forEach(b => b.classList.toggle("on", b.dataset.tabv === v));
+    readers.journal.hidden = v !== "journal";
+    readers.about.hidden = v !== "about";
+    if (v === "journal") document.getElementById("artJournal").innerHTML = T().journal;
+    if (v === "about") document.getElementById("artAbout").innerHTML = T().about;
+  }
+  tabBtns.forEach(b => b.addEventListener("click", () => { switchTab(b.dataset.tabv); b.blur(); }));
+  document.getElementById("brand").addEventListener("click", () => switchTab("garden"));
+
+  /* --- 環境シーン（SCENE） --- */
+  function buildScenes(){
+    selScene.innerHTML = "";
+    SCENES.forEach((s, i) => {
+      const op = document.createElement("option");
+      op.value = String(i); op.textContent = s.label[state.lang] || s.label.en;
+      selScene.appendChild(op);
+    });
+    selScene.value = String(state.sceneIdx);
+  }
+  selScene.addEventListener("change", () => {
+    state.sceneIdx = parseInt(selScene.value, 10) || 0;
+    try{ localStorage.setItem("ripple-garden_scene", String(state.sceneIdx)); }catch(e){}
+    resetSceneVisuals();
+    selScene.blur();
+  });
+
+  /* --- テーマ --- */
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  function buildThemes(){
+    const names = T().themes;
+    selTheme.innerHTML = "";
+    ["light", "dark", "system"].forEach((v, i) => {
+      const op = document.createElement("option");
+      op.value = v; op.textContent = names[i];
+      selTheme.appendChild(op);
+    });
+    selTheme.value = state.theme;
+  }
+  function applyTheme(){
+    const resolved = state.theme === "system" ? (media.matches ? "light" : "dark") : state.theme;
+    document.documentElement.dataset.theme = resolved;
+  }
+  selTheme.addEventListener("change", () => {
+    state.theme = selTheme.value;
+    try{ localStorage.setItem("ripple-garden_theme", state.theme); }catch(e){}
+    applyTheme(); selTheme.blur();
+  });
+  media.addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
+
+  /* --- 言語 --- */
+  function applyLang(){
+    document.documentElement.lang = state.lang;
+    hint.textContent = T().hint;
+    document.getElementById("brandSub").textContent = T().brandSub + " · " + VERSION.toUpperCase();
+    // モードセグメントのラベル（NORMAL / 音浴(BATH/BAIN)）と、BOWL等の多言語キャプションを反映
+    modeNormal.textContent = T().modeNormalLabel;
+    modeNoise.textContent = T().modeBathLabel;
+    fillModeSelect(selNormalMode, normalModeIndices);
+    fillModeSelect(selNoiseMode, noiseModeIndices);
+    buildGenres();
+    buildThemes();
+    buildScenes();
+    buildModal();
+    if (state.tab === "journal") document.getElementById("artJournal").innerHTML = T().journal;
+    if (state.tab === "about") document.getElementById("artAbout").innerHTML = T().about;
+    updateModeUI();
+  }
+  selLang.addEventListener("change", () => {
+    state.lang = selLang.value;
+    try{ localStorage.setItem("ripple-garden_lang", state.lang); }catch(e){}
+    applyLang(); selLang.blur();
+  });
+
+  /* --- 版情報ダイアログ --- */
+  const verModal = document.getElementById("verModal");
+  function buildModal(){
+    document.getElementById("vmVer").textContent = VERSION + " · " + VERSION_DATE + " · by sirop";
+    const hist = T().hist;
+    const li = ([v, txt]) => `<li><b>${v}</b>${txt}</li>`;
+    const el = document.getElementById("vmHist");
+    let expanded = false; // 既定は最新5件（shima-shima踏襲）。トグルで全件⇄簡易を往復
+    const render = () => {
+      el.innerHTML = (expanded ? hist : hist.slice(0, 5)).map(li).join("");
+      if (hist.length > 5){
+        const wrap = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.className = "vm-more";
+        btn.textContent = expanded ? T().histLess : T().histAll;
+        btn.addEventListener("click", () => { expanded = !expanded; render(); });
+        wrap.appendChild(btn);
+        el.appendChild(wrap);
+      }
+    };
+    render();
+    document.getElementById("vmClose").textContent = T().close;
+  }
+  document.getElementById("footerBtn").addEventListener("click", () => { verModal.hidden = false; });
+  document.getElementById("vmClose").addEventListener("click", () => { verModal.hidden = true; });
+  verModal.addEventListener("click", (e) => { if (e.target === verModal) verModal.hidden = true; });
+
+  /* --- 設定の復元 --- */
+  try{
+    const sv = localStorage.getItem("ripple-garden_theme");
+    if (sv === "light" || sv === "dark" || sv === "system") state.theme = sv;
+    const sl = localStorage.getItem("ripple-garden_lang");
+    if (sl && I18N[sl]) state.lang = sl;
+    const ss = parseInt(localStorage.getItem("ripple-garden_scene"), 10);
+    if (!isNaN(ss) && ss >= 0 && ss < SCENES.length) state.sceneIdx = ss;
+  }catch(e){}
+  selLang.value = state.lang;
+  applyTheme();
+  applyLang();
+  updateModeUI();
+  updateShuffleUI();
+  cruiseState();
+  applyWater();
+
+  /* --- パネル開閉 --- */
+  const toggle = document.getElementById("panelToggle");
+  toggle.addEventListener("click", () => document.body.classList.toggle("panel-open"));
+  if (window.innerWidth > 700) document.body.classList.add("panel-open");
+
+  /* --- キーボード: 1–6 モード / C クリア / Esc で水面へ --- */
+  window.addEventListener("keydown", (e) => {
+    if (!modeConfirm.hidden){
+      if (e.key === "Escape") closeModeConfirm(false);
+      return;
+    }
+    if (e.key === "Escape"){ switchTab("garden"); return; }
+    if (state.tab !== "garden") return;
+    const d = parseInt(e.key, 10);
+    if (d >= 1 && d <= Math.min(9, MODES.length)) setMode(d - 1);
+    else if (e.key === "c" || e.key === "C") clearWater();
+  });
+
+  let hintGone = false;
+  function dismissHint(){ if (!hintGone){ hintGone = true; hint.classList.add("gone"); } }
+
+  return { setMode, setGenre, recState, cruiseState, badges, dismissHint, showChord, toast, switchTab };
+})();
+
+/* 入力: クリック / ドラッグ / スペース奏法（クルーズとも共有する spawnDrop を定義） */
+(() => {
+  let lastDrag = { x: -999, y: -999, t: 0 };
+  let lastSpawnT = 0;
+  let spaceHeld = false;
+  const pointerPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const stroke = { x: 0, y: 0 };
+
+  /* 共通の一滴。opt.freq で音高上書き、opt.light で軽い声部 */
+  function spawn(x, y, strength, opt = {}){
+    const m = mode();
+    const now = performance.now();
+    // アシスト: 連打時は少しずつ音量を抑え、耳あたりを保つ
+    if (state.assist && !opt.light && now - lastSpawnT < 140) strength *= .85;
+    lastSpawnT = now;
+
+    const f = opt.freq != null ? opt.freq : pitchAt(x / VW, y / VH);
+    injectSceneImpulse(x, y, m.amp * strength * (opt.light ? .45 : 1), 3.6, opt);
+    audio.tap(x / VW, y / VH, strength, f, !!opt.light);
+    registerRipple(x, y, f, strength);
+    addGlow(x, y, strength, "190,225,255", .7, opt.light ? 8 : 13);
+    if (!opt.light) sceneTap(x, y);
+    ui.showChord(x / VW);
+    ui.dismissHint();
+  }
+  spawnDrop = spawn; // クルーズエンジンへ共有
+
+  view.addEventListener("pointerdown", (e) => {
+    if (state.tab !== "garden") return;
+    e.preventDefault();
+    audio.ensure();
+    const now = performance.now();
+    let strength = 1;
+    // Zenモード: 連打を静かに受け流す（間が美をつくる）
+    if (mode().id === "zen" && now - state.lastTapTime < 320) strength = .35;
+    state.lastTapTime = now;
+    spawn(e.clientX, e.clientY, strength);
+    lastDrag = { x: e.clientX, y: e.clientY, t: now };
+  });
+
+  view.addEventListener("pointermove", (e) => {
+    if (state.tab !== "garden" || spaceHeld) return;
+    if (e.buttons === 0 || mode().id === "zen") return; // 禅は撫でても応えない
+    const now = performance.now();
+    const d = Math.hypot(e.clientX - lastDrag.x, e.clientY - lastDrag.y);
+    if (d > 30 && now - lastDrag.t > 70){
+      spawn(e.clientX, e.clientY, .45);
+      lastDrag = { x: e.clientX, y: e.clientY, t: now };
+    }
+  });
+
+  /* ポインタ位置の常時追跡（スペース奏法の照準） */
+  window.addEventListener("pointermove", (e) => {
+    pointerPos.x = e.clientX; pointerPos.y = e.clientY;
+    if (!spaceHeld || state.tab !== "garden") return;
+
+    // スペース押し込み + 移動 = 弓奏ストローク
+    const dx = e.clientX - stroke.x, dy = e.clientY - stroke.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 26) return;
+    stroke.x = e.clientX; stroke.y = e.clientY;
+    const step = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 1 : -1) : (dx > 0 ? 1 : -1);
+    const f = pitchAt(e.clientX / VW, e.clientY / VH, step);
+    spawn(e.clientX, e.clientY, .42, { freq: f, light: true });
+    addGlow(e.clientX, e.clientY, .35, "190,225,255", .5, 7); // 航跡の燐光
+  });
+
+  /* スペースキー = クリック代用。連打でリズム（OSのキーリピートは無視） */
+  window.addEventListener("keydown", (e) => {
+    if (e.code !== "Space") return;
+    if (state.tab !== "garden") return; // 読み物中はスクロールに譲る
+    e.preventDefault();
+    if (e.repeat) return;
+    audio.ensure();
+    spaceHeld = true;
+    stroke.x = pointerPos.x; stroke.y = pointerPos.y;
+    spawn(pointerPos.x, pointerPos.y, 1);
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.code === "Space"){ spaceHeld = false; }
+  });
+  window.addEventListener("blur", () => { spaceHeld = false; });
+
+  view.addEventListener("contextmenu", e => e.preventDefault());
+})();
+
+/* リサイズ: 少し待ってから水面を張り直す */
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { setupSim(); ripples.length = 0; }, 220);
+});
+
+/* ---------- 12. メインループ ---------- */
+let lastT = performance.now();
+function frame(now){
+  const dt = Math.min(50, now - lastT);
+  lastT = now;
+  const m = mode();
+  // ⑤ 低電力ECO: WATER OFF か タブ非表示のとき、描画・波面計算・反射/干渉/きらめきを止める
+  // （音・クルーズ・自動クリーンは継続する）。コウのv011設計どおりrAF自体は止めない。
+  const eco = !state.water || document.hidden;
+
+  // 水面の自然な揺らぎ: ごく小さな雫を時折落とす（音は鳴らさない）。ECO中は止める。
+  if (!eco && Math.random() < m.shimmer * (dt / 16.7)){
+    injectSceneImpulse(Math.random() * VW, Math.random() * VH, .022 + Math.random() * .025, 3.5, { ambient:true });
+  }
+
+  cruiseTick(now);
+
+  // 長時間運用の自動クリーンアップ: 一定時間ごとに clearWater を発火し、
+  // フェードアウト→掃除→フェードインで聴感を途切れさせずに蓄積をリセットする。
+  // 演奏中の急なクリアを避けるため、手弾きが4秒以上途切れている時だけ実行する
+  // （クルーズ中は手弾きしないので常に対象になる）。
+  if (audio.running()){
+    if (!lastAutoClean) lastAutoClean = now;
+    else if (state.autoCleanMin > 0 && now - lastAutoClean > state.autoCleanMin * 60000
+             && !fadeClear.active && now - state.lastTapTime > 4000){
+      clearWater();
+    }
+  }
+
+  if (fadeClear.active && now - fadeClear.t0 > fadeClear.dur) finishClear();
+
+  if (!eco){
+    const steps = m.sub * Math.max(1, Math.round(dt / 16.7));
+    for (let s = 0; s < Math.min(steps, 4); s++) stepField();
+    sceneAmbient(now, dt);
+    updateScene(now, dt);
+    lerpPalette();
+    updateRipples(dt, now);
+    detectFieldCollisions(now);
+    renderField(now);
+    drawScene(now);
+  } else {
+    // ECO中は重い波面計算・描画・反射/干渉を止め、波紋/光の蓄積だけ防ぐ
+    if (ripples.length) ripples.length = 0;
+    if (glows.length) glows.length = 0;
+    clearScene();
+  }
+  ui.badges(now);
+  requestAnimationFrame(frame);
+}
+
+// タブ復帰時の再基準化: 非表示中に進んだ時間でクルーズが一気に発音しないようにする
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  const now = performance.now();
+  lastT = now;
+  if (cruise.on && !cruise.stopping){
+    cruise.nextStep = now + 200;
+    cruise.nextFree = now + 200;
+    cruise.runQueue.length = 0;
+  }
+});
+
+setupSim();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
